@@ -1,4 +1,9 @@
-{pkgs, lib, ...}: let
+{
+  pkgs,
+  lib,
+  nanoclaw,
+  ...
+}: let
   # Users:
   admin = "admin";
   agent = "agent";
@@ -117,6 +122,8 @@ in {
       # 2xxx sets the setgid bit
       "d ${repo} 2775 ${admin} ${group} -"
       "d ${work} 2775 ${agent} ${group} -"
+      # Read-only workspace from /nix/store with the full nanoclaw tree.
+      "L+ /home/${agent}/nanoclaw - - - - ${nanoclaw}"
     ];
     services.init-work = {
       description = "Initialize Git bridge between ${admin} and ${agent}";

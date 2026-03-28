@@ -13,6 +13,11 @@
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;
+
+  ncDir = "/home/${agent}/nanoclaw";
+  ncOver = "/var/lib/nanoclaw";
+  ncUpper = "${ncOver}/upper";
+  ncWork = "${ncOver}/work";
 in {
   # Networking & Firewall
   networking = {
@@ -112,21 +117,46 @@ in {
   };
 
   systemd = let
-    gitdir = "/srv/git";
-    repo = "${gitdir}/work.git";
+    git = "/srv/git";
+    repo = "${git}/work.git";
     work = "/home/${agent}/work";
     group = "users";
   in {
     tmpfiles.rules = [
-      "d ${gitdir} 0775 ${admin} ${group} -"
+      "d ${git} 0775 ${admin} ${group} -"
       # 2xxx sets the setgid bit
       "d ${repo} 2775 ${admin} ${group} -"
       "d ${work} 2775 ${agent} ${group} -"
-      # Read-only workspace from /nix/store with the full nanoclaw tree.
-      "L+ /home/${agent}/nanoclaw - - - - ${nanoclaw}"
+      # Mount point and writable overlay backing dirs for nanoclaw.
+      "d ${ncOver} 0755 root root -"
+      "d ${ncUpper} 0755 ${agent} ${group} -"
+      "d ${ncWork} 0755 ${agent} ${group} -"
+      "d ${ncDir} 0755 ${agent} ${group} -"
     ];
+
+    automounts = [
+      {
+        where = ncDir;
+        wantedBy = ["multi-user.target"];
+      }
+    ];
+
+    mounts = [
+      {
+        where = ncDir;
+        what = "overlay";
+        type = "overlay";
+        options = builtins.concatStringsSep "," [
+          "lowerdir=${nanoclaw}"
+          "upperdir=${ncUpper}"
+          "workdir=${ncWork}"
+          "noauto"
+        ];
+      }
+    ];
+
     services.init-work = {
-      description = "Initialize Git bridge between ${admin} and ${agent}";
+      description = "Set up git bridge between ${admin} and ${agent}";
       after = ["network.target"];
       wantedBy = ["multi-user.target"];
       path = with pkgs; [coreutils git util-linux];

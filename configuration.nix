@@ -10,14 +10,34 @@ in {
 
       # Restrict outgoing traffic
       extraCommands = ''
-        # Block common private IP ranges
+        # 1. Allow existing connections
+        iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+        # 2. The llama.cpp server running on the host
+        iptables -A OUTPUT -d 10.0.2.2 -p tcp --dport 12000 -j ACCEPT
+
+        # 3. Block everything else to internal ranges
         iptables -A OUTPUT -d 192.168.0.0/16 -j DROP
         iptables -A OUTPUT -d 10.0.0.0/8 -j DROP
 
-        # Allow only port 12000 to the QEMU host gateway (typically 10.0.2.2)
-        iptables -A OUTPUT -d 10.0.2.2 -p tcp --dport 12000 -j ACCEPT
+        # 4. Block the rest of the host access
         iptables -A OUTPUT -d 10.0.2.2 -j DROP
       '';
+    };
+  };
+
+  # This block is specifically for settings that only apply
+  # when building the QEMU VM via config.system.build.vm
+  virtualisation.vmVariant = {
+    virtualisation = {
+      forwardPorts = [
+        {
+          from = "host";
+          host.port = 2222;
+          guest.port = 22;
+        }
+      ];
+      memorySize = 32 * 1024; # MiB
     };
   };
 

@@ -38,6 +38,9 @@ in {
   # when building the QEMU VM via config.system.build.vm
   virtualisation.vmVariant = {
     virtualisation = {
+      cores = 8;
+      memorySize = 32 * 1024; # MiB
+      graphics = false;
       forwardPorts = [
         {
           from = "host";
@@ -45,7 +48,6 @@ in {
           guest.port = 22;
         }
       ];
-      memorySize = 32 * 1024; # MiB
     };
   };
 

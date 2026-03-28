@@ -1,6 +1,5 @@
 {
   pkgs,
-  lib,
   nanoclaw,
   ...
 }: let
@@ -157,26 +156,46 @@ in {
       }
     ];
 
-    services.init-work = {
-      description = "Git bridge between ${admin} and ${agent}";
-      after = ["network.target"];
-      wantedBy = ["multi-user.target"];
-      path = with pkgs; [coreutils git util-linux];
-      script = ''
-        # Initialize bare repo if it doesn't exist
-        if [ ! -d ${repoDir}/objects ]; then
-          git init --bare ${repoDir}
-          chown -R ${admin}:${group} ${repoDir}
-          chmod -R 2775 ${repoDir}
-        fi
+    services = {
+      init-nanoclaw = {
+        description = "Nanoclaw git setup for ${agent}";
+        after = ["network.target"];
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils git];
+        script = ''
+          # NanoClaw setup expects a git repo.
+          # We mount ~/nanoclaw via overlayfs on top of a store path, but pretend there is a git repo.
+          if [ ! -d ${ncDir}/.git ]; then
+            runuser -u ${agent} -- git init ${ncDir}
+            # Add upstream so that the setup script would find it.
+            runuser -u ${agent} -- git -C ${ncDir} remote add upstream https://github.com/qwibitai/nanoclaw.git
+            # Also add a dummy fork, even though it may not exist, to satisfy the setup script.
+            runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/nobody/nanoclaw.git
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
+      init-work = {
+        description = "Git bridge between ${admin} and ${agent}";
+        after = ["network.target"];
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils git util-linux];
+        script = ''
+          # Initialize bare repo if it doesn't exist
+          if [ ! -d ${repoDir}/objects ]; then
+            git init --bare ${repoDir}
+            chown -R ${admin}:${group} ${repoDir}
+            chmod -R 2775 ${repoDir}
+          fi
 
-        # Initialize agent's workspace if empty
-        if [ ! -d ${workDir}/.git ]; then
-          runuser -u ${agent} -- git init ${workDir}
-          runuser -u ${agent} -- git -C ${workDir} remote add origin ${repoDir}
-        fi
-      '';
-      serviceConfig.Type = "oneshot";
+          # Initialize agent's workspace if empty
+          if [ ! -d ${workDir}/.git ]; then
+            runuser -u ${agent} -- git init ${workDir}
+            runuser -u ${agent} -- git -C ${workDir} remote add origin ${repoDir}
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
     };
   };
 

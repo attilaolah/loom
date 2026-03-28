@@ -119,13 +119,13 @@ in {
   };
 
   systemd = let
-    git = "/srv/git";
-    repo = "${git}/work.git";
+    gitdir = "/srv/git";
+    repo = "${gitdir}/work.git";
     work = "/home/${agent}/work";
     group = "users";
   in {
     tmpfiles.rules = [
-      "d ${git} 0775 ${admin} ${group} -"
+      "d ${gitdir} 0775 ${admin} ${group} -"
       # 2xxx sets the setgid bit
       "d ${repo} 2775 ${admin} ${group} -"
       "d ${work} 2775 ${agent} ${group} -"
@@ -161,10 +161,7 @@ in {
       description = "Set up git bridge between ${admin} and ${agent}";
       after = ["network.target"];
       wantedBy = ["multi-user.target"];
-      serviceConfig = {
-        Type = "oneshot";
-        Environment = ["PATH=${lib.makeBinPath (with pkgs; [coreutils git util-linux])}"];
-      };
+      path = with pkgs; [coreutils git util-linux];
       script = ''
         # Initialize bare repo if it doesn't exist
         if [ ! -d ${repo}/objects ]; then
@@ -179,6 +176,7 @@ in {
           runuser -u ${agent} -- git -C ${work} remote add origin ${repo}
         fi
       '';
+      serviceConfig.Type = "oneshot";
     };
   };
 

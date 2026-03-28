@@ -9,19 +9,27 @@ in {
       allowedTCPPorts = [22];
 
       # Restrict outgoing traffic
-      extraCommands = ''
-        # 1. Allow existing connections
+      extraCommands = let
+        host = n: "10.0.2.${toString n}";
+        gw = host 2;
+        ns = host 3;
+      in ''
+        # Allow existing connections
         iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-        # 2. The llama.cpp server running on the host
-        iptables -A OUTPUT -d 10.0.2.2 -p tcp --dport 12000 -j ACCEPT
+        # Allow DNS to the QEMU virtual DNS server
+        iptables -A OUTPUT -d ${ns} -p udp --dport 53 -j ACCEPT
+        iptables -A OUTPUT -d ${ns} -p tcp --dport 53 -j ACCEPT
 
-        # 3. Block everything else to internal ranges
+        # Allow the llama.cpp server running on the host
+        iptables -A OUTPUT -d ${gw} -p tcp --dport 12000 -j ACCEPT
+
+        # Block all other traffic to private/internal ranges
         iptables -A OUTPUT -d 192.168.0.0/16 -j DROP
         iptables -A OUTPUT -d 10.0.0.0/8 -j DROP
 
-        # 4. Block the rest of the host access
-        iptables -A OUTPUT -d 10.0.2.2 -j DROP
+        # Block the rest of the host gateway
+        iptables -A OUTPUT -d ${gw} -j DROP
       '';
     };
   };

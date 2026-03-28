@@ -4,16 +4,18 @@
   nanoclaw,
   ...
 }: let
-  # Users:
+  # Users
   admin = "admin";
   agent = "agent";
   admins = [admin];
 
+  # Networking
   llamaPort = "12000";
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;
 
+  # Directories
   ncDir = "/home/${agent}/nanoclaw";
   ncOver = "/var/lib/nanoclaw";
   ncUpper = "${ncOver}/upper";

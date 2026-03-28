@@ -39,19 +39,24 @@ in {
 
   # This block is specifically for settings that only apply
   # when building the QEMU VM via config.system.build.vm
-  virtualisation.vmVariant = {
-    virtualisation = {
-      cores = 8;
-      memorySize = 32 * 1024; # MiB
-      graphics = false;
-      forwardPorts = [
-        {
-          from = "host";
-          host.port = 2222;
-          guest.port = 22;
-        }
-      ];
+  virtualisation = {
+    vmVariant = {
+      virtualisation = {
+        cores = 8;
+        memorySize = 32 * 1024; # 32Gi
+        diskSize = 120 * 1000; # 120GB
+        graphics = false;
+
+        forwardPorts = [
+          {
+            from = "host";
+            host.port = 2222;
+            guest.port = 22;
+          }
+        ];
+      };
     };
+    docker.enable = true;
   };
 
   # User Management
@@ -70,7 +75,7 @@ in {
       };
       "${agent}" = {
         isNormalUser = true;
-        extraGroups = ["nixbld"];
+        extraGroups = ["docker" "nixbld"];
         shell = pkgs.bashInteractive;
       };
     };
@@ -136,11 +141,86 @@ in {
   };
 
   environment = {
-    systemPackages = with pkgs; [git];
-    etc.gitconfig.text = ''
-      [init]
-        defaultBranch = main
-    '';
+    systemPackages = with pkgs; [
+      # NPM + Node runtime
+      # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus.
+      (lib.hiPrio nodejs_25)
+      nodePackages.npm
+
+      # Docker
+      docker
+      docker-compose
+
+      # POSIX & other tools for agents
+      # binutils -- skipped in favour of clang/llvm
+      attr
+      coreutils
+      diffutils
+      findutils
+      gawk
+      gnugrep
+      gnumake
+      gnused
+      patch
+      unzip
+      xz
+
+      # Tooling that most agents seem to be taking for granted
+      fd
+      jq
+      man-pages
+      man-pages-posix
+      ripgrep
+
+      # For conveninet network access
+      bind.dnsutils # dig
+      cacert
+      curl
+      gh-dash
+      git
+      github-cli
+      iputils # ping
+      rsync
+      wget
+
+      # LLVM
+      clang_22
+      llvm_22
+
+      # Common tools for coding tasks
+      go
+      cmake
+      pkg-config
+      python315
+      zig
+
+      # The "Investigator" Kit
+      strace
+      hexyl
+      which
+      procps
+      gdb
+      lldb
+    ];
+  };
+  programs.git = {
+    enable = true;
+    config = {
+      init.defaultBranch = "main";
+      pull.rebase = true;
+      push.autoSetupRemote = true;
+    };
+  };
+
+  nix = {
+    nixPath = ["nixpkgs=${pkgs.path}"];
+    settings.experimental-features = ["nix-command" "flakes"];
+  };
+
+  documentation = {
+    enable = true;
+    man.enable = true;
+    dev.enable = true;
   };
 
   system.stateVersion = "26.05";

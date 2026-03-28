@@ -101,7 +101,6 @@ in {
   };
 
   systemd = let
-    inherit (pkgs.lib) getExe getExe';
     gitdir = "/srv/git";
     repo = "${gitdir}/work.git";
     work = "/home/${agent}/work";
@@ -115,10 +114,11 @@ in {
       description = "Initialize Git bridge between ${admin} and ${agent}";
       after = ["network.target"];
       wantedBy = ["multi-user.target"];
+      path = with pkgs; [coreutils git util-linux];
       script = ''
         # Initialize bare repo if it doesn't exist
         if [ ! -d ${repo}/objects ]; then
-          ${getExe pkgs.git} init --bare ${repo}
+          git init --bare ${repo}
           chown -R ${admin}:users ${repo}
         fi
 
@@ -129,7 +129,7 @@ in {
         echo "Syncing agent workspace..."
         export GIT_WORK_TREE=${work}
         export GIT_DIR=${repo}
-        ${getExe pkgs.git} checkout -f
+        git checkout -f
         # Ensure agent owns the checked-out files
         chown -R ${agent}:users ${work}
         EOF
@@ -137,16 +137,22 @@ in {
 
         # Initialize agent's workspace if empty
         if [ ! -d ${work}/.git ]; then
-          sudo -u ${agent} ${getExe' pkgs.git "init"} ${work}
+          runuser -u ${agent} -- git init ${work}
           # Point the agent to the local bare repo
-          sudo -u ${agent} ${getExe' pkgs.git "remote"} add origin ${repo} || true
+          runuser -u ${agent} -- git -C ${work} remote add origin ${repo}
         fi
       '';
       serviceConfig.Type = "oneshot";
     };
   };
 
-  environment.systemPackages = with pkgs; [git];
+  environment = {
+    systemPackages = with pkgs; [git];
+    etc.gitconfig.text = ''
+      [init]
+        defaultBranch = main
+    '';
+  };
 
   system.stateVersion = "26.05";
 }

@@ -22,10 +22,13 @@
         config.allowUnfree = true;
       };
 
-    mkNanoclaw = pkgs:
+    mkNanoclaw = pkgs: let
+      packageJson = builtins.fromJSON (builtins.readFile "${nanoclaw}/package.json");
+      upstreamVersion = packageJson.version or "unstable";
+    in
       pkgs.buildNpmPackage {
         pname = "nanoclaw";
-        version = "unstable-${nanoclaw.lastModifiedDate or "unknown"}-${nanoclaw.shortRev or "dirty"}";
+        version = "${upstreamVersion}-${nanoclaw.shortRev or "dirty"}";
 
         src = nanoclaw;
         nodejs = pkgs.nodejs_25;

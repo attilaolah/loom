@@ -104,11 +104,13 @@ in {
     gitdir = "/srv/git";
     repo = "${gitdir}/work.git";
     work = "/home/${agent}/work";
+    group = "users";
   in {
     tmpfiles.rules = [
-      "d ${gitdir} 0775 ${admin} users -"
-      "d ${repo} 2775 ${admin} users -" # 2xxx sets the setgid bit
-      "d ${work} 2775 ${agent} users -"
+      "d ${gitdir} 0775 ${admin} ${group} -"
+      # 2xxx sets the setgid bit
+      "d ${repo} 2775 ${admin} ${group} -"
+      "d ${work} 2775 ${agent} ${group} -"
     ];
     services.init-work = {
       description = "Initialize Git bridge between ${admin} and ${agent}";
@@ -119,26 +121,13 @@ in {
         # Initialize bare repo if it doesn't exist
         if [ ! -d ${repo}/objects ]; then
           git init --bare ${repo}
-          chown -R ${admin}:users ${repo}
+          chown -R ${admin}:${group} ${repo}
+          chmod -R 2775 /srv/git/work.git
         fi
-
-        # Create the post-receive hook to sync the agent's folder
-        cat << 'EOF' > ${repo}/hooks/post-receive
-        #!/usr/bin/env bash
-        # When the admin receives a push, update the agent's working directory
-        echo "Syncing agent workspace..."
-        export GIT_WORK_TREE=${work}
-        export GIT_DIR=${repo}
-        git checkout -f
-        # Ensure agent owns the checked-out files
-        chown -R ${agent}:users ${work}
-        EOF
-        chmod +x ${repo}/hooks/post-receive
 
         # Initialize agent's workspace if empty
         if [ ! -d ${work}/.git ]; then
           runuser -u ${agent} -- git init ${work}
-          # Point the agent to the local bare repo
           runuser -u ${agent} -- git -C ${work} remote add origin ${repo}
         fi
       '';

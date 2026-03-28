@@ -159,7 +159,10 @@ in {
       description = "Set up git bridge between ${admin} and ${agent}";
       after = ["network.target"];
       wantedBy = ["multi-user.target"];
-      path = with pkgs; [coreutils git util-linux];
+      serviceConfig = {
+        Type = "oneshot";
+        Environment = ["PATH=${lib.makeBinPath (with pkgs; [coreutils git util-linux])}"];
+      };
       script = ''
         # Initialize bare repo if it doesn't exist
         if [ ! -d ${repo}/objects ]; then
@@ -174,7 +177,6 @@ in {
           runuser -u ${agent} -- git -C ${work} remote add origin ${repo}
         fi
       '';
-      serviceConfig.Type = "oneshot";
     };
   };
 

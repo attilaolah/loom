@@ -1,5 +1,8 @@
 {pkgs, ...}: let
-  admins = ["admin"];
+  # Users:
+  admin = "admin";
+  agent = "agent";
+  admins = [admin];
 in {
   # Networking & Firewall
   networking = {
@@ -54,7 +57,7 @@ in {
   # User Management
   users = {
     users = {
-      admin = {
+      "${admin}" = {
         isNormalUser = true;
         extraGroups = ["wheel"];
         shell = pkgs.bashInteractive;
@@ -65,7 +68,7 @@ in {
           })
         ];
       };
-      agent = {
+      "${agent}" = {
         isNormalUser = true;
         extraGroups = ["nixbld"];
         shell = pkgs.bashInteractive;
@@ -96,6 +99,54 @@ in {
       AllowUsers = admins;
     };
   };
+
+  systemd = let
+    inherit (pkgs.lib) getExe getExe';
+    gitdir = "/srv/git";
+    repo = "${gitdir}/work.git";
+    work = "/home/${agent}/work";
+  in {
+    tmpfiles.rules = [
+      "d ${gitdir} 0775 ${admin} users -"
+      "d ${repo} 2775 ${admin} users -" # 2xxx sets the setgid bit
+      "d ${work} 2775 ${agent} users -"
+    ];
+    services.init-work = {
+      description = "Initialize Git bridge between ${admin} and ${agent}";
+      after = ["network.target"];
+      wantedBy = ["multi-user.target"];
+      script = ''
+        # Initialize bare repo if it doesn't exist
+        if [ ! -d ${repo}/objects ]; then
+          ${getExe pkgs.git} init --bare ${repo}
+          chown -R ${admin}:users ${repo}
+        fi
+
+        # Create the post-receive hook to sync the agent's folder
+        cat << 'EOF' > ${repo}/hooks/post-receive
+        #!/usr/bin/env bash
+        # When the admin receives a push, update the agent's working directory
+        echo "Syncing agent workspace..."
+        export GIT_WORK_TREE=${work}
+        export GIT_DIR=${repo}
+        ${getExe pkgs.git} checkout -f
+        # Ensure agent owns the checked-out files
+        chown -R ${agent}:users ${work}
+        EOF
+        chmod +x ${repo}/hooks/post-receive
+
+        # Initialize agent's workspace if empty
+        if [ ! -d ${work}/.git ]; then
+          sudo -u ${agent} ${getExe' pkgs.git "init"} ${work}
+          # Point the agent to the local bare repo
+          sudo -u ${agent} ${getExe' pkgs.git "remote"} add origin ${repo} || true
+        fi
+      '';
+      serviceConfig.Type = "oneshot";
+    };
+  };
+
+  environment.systemPackages = with pkgs; [git];
 
   system.stateVersion = "26.05";
 }

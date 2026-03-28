@@ -8,6 +8,7 @@
   admin = "admin";
   agent = "agent";
   admins = [admin];
+  group = "users";
 
   # Networking
   llamaPort = "12000";
@@ -16,10 +17,14 @@
   ns = host 3;
 
   # Directories
-  ncDir = "/home/${agent}/nanoclaw";
+  home = "/home/${agent}";
+  workDir = "${home}/work";
+  ncDir = "${home}/nanoclaw";
   ncOver = "/var/lib/nanoclaw";
   ncUpper = "${ncOver}/upper";
   ncWork = "${ncOver}/work";
+  gitDir = "/srv/git";
+  repoDir = "${gitDir}/work.git";
 in {
   # Networking & Firewall
   networking = {
@@ -118,17 +123,12 @@ in {
     };
   };
 
-  systemd = let
-    gitdir = "/srv/git";
-    repo = "${gitdir}/work.git";
-    work = "/home/${agent}/work";
-    group = "users";
-  in {
+  systemd = {
     tmpfiles.rules = [
-      "d ${gitdir} 0775 ${admin} ${group} -"
+      "d ${gitDir} 0775 ${admin} ${group} -"
       # 2xxx sets the setgid bit
-      "d ${repo} 2775 ${admin} ${group} -"
-      "d ${work} 2775 ${agent} ${group} -"
+      "d ${repoDir} 2775 ${admin} ${group} -"
+      "d ${workDir} 2775 ${agent} ${group} -"
       # Mount point and writable overlay backing dirs for nanoclaw.
       "d ${ncOver} 0755 root root -"
       "d ${ncUpper} 0755 ${agent} ${group} -"
@@ -158,22 +158,22 @@ in {
     ];
 
     services.init-work = {
-      description = "Set up git bridge between ${admin} and ${agent}";
+      description = "Git bridge between ${admin} and ${agent}";
       after = ["network.target"];
       wantedBy = ["multi-user.target"];
       path = with pkgs; [coreutils git util-linux];
       script = ''
         # Initialize bare repo if it doesn't exist
-        if [ ! -d ${repo}/objects ]; then
-          git init --bare ${repo}
-          chown -R ${admin}:${group} ${repo}
-          chmod -R 2775 /srv/git/work.git
+        if [ ! -d ${repoDir}/objects ]; then
+          git init --bare ${repoDir}
+          chown -R ${admin}:${group} ${repoDir}
+          chmod -R 2775 ${repoDir}
         fi
 
         # Initialize agent's workspace if empty
-        if [ ! -d ${work}/.git ]; then
-          runuser -u ${agent} -- git init ${work}
-          runuser -u ${agent} -- git -C ${work} remote add origin ${repo}
+        if [ ! -d ${workDir}/.git ]; then
+          runuser -u ${agent} -- git init ${workDir}
+          runuser -u ${agent} -- git -C ${workDir} remote add origin ${repoDir}
         fi
       '';
       serviceConfig.Type = "oneshot";

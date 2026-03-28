@@ -3,28 +3,45 @@
 
   inputs = {
     nixpkgs.url = "nixpkgs";
+    flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = {nixpkgs, ...}: let
-    inherit (nixosConfig.config.system.build) vm;
-    system = "x86_64-linux";
-    nixosConfig = nixpkgs.lib.nixosSystem {
-      inherit system;
-      modules = [
-        ./configuration.nix
-      ];
-    };
-  in {
-    nixosConfigurations.vm = nixosConfig;
+  outputs = inputs @ {
+    flake-parts,
+    nixpkgs,
+    ...
+  }:
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = nixpkgs.lib.systems.flakeExposed;
 
-    packages.${system} = {
-      inherit vm;
-      default = vm;
-    };
+      flake = {withSystem, ...}: {
+        nixosConfigurations.vm = withSystem builtins.currentSystem ({system, ...}:
+          nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [./configuration.nix];
+          });
+      };
 
-    apps.${system}.vm = {
-      type = "app";
-      program = nixpkgs.lib.getExe' vm "run-${nixosConfig.config.networking.hostName}-vm";
+      perSystem = {
+        lib,
+        system,
+        ...
+      }: let
+        inherit (nixosConfig.config.system.build) vm;
+        nixosConfig = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [./configuration.nix];
+        };
+      in {
+        packages = {
+          inherit vm;
+          default = vm;
+        };
+
+        apps.vm = {
+          type = "app";
+          program = lib.getExe' vm "run-${nixosConfig.config.networking.hostName}-vm";
+        };
+      };
     };
-  };
 }

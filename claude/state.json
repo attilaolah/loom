@@ -1,0 +1,17 @@
+{
+  "theme": "dark",
+  "customApiKeyResponses": {
+    "approved": [
+      "sk-local"
+    ]
+  },
+  "hasCompletedOnboarding": true,
+  "projects": {
+    "/home/agent/work": {
+      "hasTrustDialogAccepted": true
+    },
+    "/home/agent/nanoclaw": {
+      "hasTrustDialogAccepted": true
+    }
+  }
+}

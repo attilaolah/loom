@@ -1,5 +1,6 @@
 {
   pkgs,
+  lib,
   nanoclaw,
   ...
 }: let
@@ -8,6 +9,7 @@
   agent = "agent";
   admins = [admin];
   group = "users";
+  owner = "attilaolah";
 
   # Networking
   llamaPort = "12000";
@@ -19,9 +21,9 @@
   home = "/home/${agent}";
   workDir = "${home}/work";
   ncDir = "${home}/nanoclaw";
-  ncOver = "/var/lib/nanoclaw";
-  ncUpper = "${ncOver}/upper";
-  ncWork = "${ncOver}/work";
+  claudeDir = "${home}/.claude";
+  claudeSettings = "${claudeDir}/settings.json";
+  claudeState = "${home}/.claude.json";
   gitDir = "/srv/git";
   repoDir = "${gitDir}/work.git";
 in {
@@ -128,49 +130,47 @@ in {
       # 2xxx sets the setgid bit
       "d ${repoDir} 2775 ${admin} ${group} -"
       "d ${workDir} 2775 ${agent} ${group} -"
-      # Mount point and writable overlay backing dirs for nanoclaw.
-      "d ${ncOver} 0755 root root -"
-      "d ${ncUpper} 0755 ${agent} ${group} -"
-      "d ${ncWork} 0755 ${agent} ${group} -"
+      # Writable nanoclaw working tree copied from the store path.
       "d ${ncDir} 0755 ${agent} ${group} -"
-    ];
-
-    automounts = [
-      {
-        where = ncDir;
-        wantedBy = ["multi-user.target"];
-      }
-    ];
-
-    mounts = [
-      {
-        where = ncDir;
-        what = "overlay";
-        type = "overlay";
-        options = builtins.concatStringsSep "," [
-          "lowerdir=${nanoclaw}"
-          "upperdir=${ncUpper}"
-          "workdir=${ncWork}"
-          "noauto"
-        ];
-      }
+      "d ${claudeDir} 0755 ${agent} ${group} -"
     ];
 
     services = {
+      init-claude = {
+        description = "Preseed Claude settings for ${agent}";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils];
+        script = ''
+          if [ ! -f ${claudeState} ]; then
+            install -m 0644 -o ${agent} -g ${group} ${./claude/state.json} ${claudeState}
+          fi
+
+          if [ ! -f ${claudeSettings} ]; then
+            install -m 0644 -o ${agent} -g ${group} ${./claude/settings.json} ${claudeSettings}
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
       init-nanoclaw = {
         description = "Nanoclaw git setup for ${agent}";
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils git];
+        path = with pkgs; [coreutils git util-linux];
         script = ''
-          # NanoClaw setup expects a git repo.
-          # We mount ~/nanoclaw via overlayfs on top of a store path, but pretend there is a git repo.
+          # Create a writable working tree once from the immutable store source.
+          if [ ! -e ${ncDir}/package.json ]; then
+            cp -a --no-preserve=ownership ${nanoclaw}/. ${ncDir}/
+            chown -R ${agent}:${group} ${ncDir}
+            chmod -R u+rwX ${ncDir}
+          fi
+
+          # NanoClaw setup expects a git repo, ensure it appears as a git checkout.
           if [ ! -d ${ncDir}/.git ]; then
             runuser -u ${agent} -- git init ${ncDir}
             # Add upstream so that the setup script would find it.
             runuser -u ${agent} -- git -C ${ncDir} remote add upstream https://github.com/qwibitai/nanoclaw.git
             # Also add a dummy fork, even though it may not exist, to satisfy the setup script.
-            runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/nobody/nanoclaw.git
+            runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
           fi
         '';
         serviceConfig.Type = "oneshot";

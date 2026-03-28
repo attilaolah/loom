@@ -1,4 +1,4 @@
-{pkgs, ...}: let
+{pkgs, lib, ...}: let
   # Users:
   admin = "admin";
   agent = "agent";

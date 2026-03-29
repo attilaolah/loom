@@ -41,8 +41,8 @@ in {
     # TODO: Set up proper resolution for the .real aliases.
     extraHosts = ''
       143.204.55.65 ${dnsOneCli}.real
-      127.0.0.1 ${dnsOneCli}
-      ::1 ${dnsOneCli}
+      127.0.0.1 ${dnsAnthropic} ${dnsOneCli}
+      ::1 ${dnsAnthropic} ${dnsOneCli}
     '';
     firewall = {
       enable = true;

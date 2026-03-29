@@ -181,6 +181,9 @@ in {
             runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
             # Pre-fetch the upstream so the agent can see remote branches
             runuser -u ${agent} -- git -C ${ncDir} fetch upstream
+            # TODO: move to the user's global git config
+            runuser -u ${agent} -- git config --global user.email "agent@vm.local"
+            runuser -u ${agent} -- git config --global user.name "NanoClaw Agent"
           fi
         '';
         serviceConfig.Type = "oneshot";

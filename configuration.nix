@@ -158,20 +158,22 @@ in {
         wantedBy = ["multi-user.target"];
         path = with pkgs; [coreutils git util-linux];
         script = ''
-          # Create a writable working tree once from the immutable store source.
+          # Create a writable working tree once from the immutable store source
           if [ ! -e ${ncDir}/package.json ]; then
             cp -a --no-preserve=ownership ${nanoclaw}/. ${ncDir}/
             chown -R ${agent}:${group} ${ncDir}
             chmod -R u+rwX ${ncDir}
           fi
 
-          # NanoClaw setup expects a git repo, ensure it appears as a git checkout.
+          # NanoClaw setup expects a git repo, ensure it appears as a git checkout
           if [ ! -d ${ncDir}/.git ]; then
             runuser -u ${agent} -- git init ${ncDir}
-            # Add upstream so that the setup script would find it.
+            # Add upstream so that the setup script would find it
             runuser -u ${agent} -- git -C ${ncDir} remote add upstream https://github.com/qwibitai/nanoclaw.git
-            # Also add a dummy fork, even though it may not exist, to satisfy the setup script.
+            # Also add a dummy fork, even though it may not exist, to satisfy the setup script
             runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
+            # Pre-fetch the upstream so the agent can see remote branches
+            runuser -u ${agent} -- git -C ${ncDir} fetch upstream
           fi
         '';
         serviceConfig.Type = "oneshot";

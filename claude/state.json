@@ -2,7 +2,7 @@
   "theme": "dark",
   "customApiKeyResponses": {
     "approved": [
-      "sk-local"
+      "sk-ant-local"
     ]
   },
   "hasCompletedOnboarding": true,

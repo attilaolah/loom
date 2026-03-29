@@ -295,7 +295,7 @@ in {
     variables = {
       ANTHROPIC_BASE_URL = "http://${gw}:${llamaPort}";
       # API key is not required by the host, but the client wants one.
-      ANTHROPIC_API_KEY = "sk-local";
+      ANTHROPIC_API_KEY = "sk-ant-local";
     };
   };
   programs.git = {

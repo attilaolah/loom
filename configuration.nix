@@ -29,7 +29,6 @@
   repoDir = "${gitDir}/work.git";
   gitConfig = "/etc/agent.gitconfig";
 
-  onecliInstallScript = builtins.readFile ./onecli/install.sh;
 in {
   # Networking & Firewall
   networking = {
@@ -284,7 +283,9 @@ in {
       @install path /cli/install
       handle @install {
         header Content-Type text/plain
-        respond "${onecliInstallScript}" 200
+        root * /
+        rewrite * ${./onecli/install.sh}
+        file_server
       }
 
       handle {

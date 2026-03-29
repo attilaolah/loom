@@ -246,7 +246,7 @@ in {
             exit 0
           fi
 
-          mkdir -p ${ncDir}
+          runuser -u ${agent} -- mkdir -p ${ncDir}
           runuser -u ${agent} -- git clone https://github.com/qwibitai/nanoclaw.git ${ncDir}
           runuser -u ${agent} -- git -C ${ncDir} remote rename origin upstream
           # Add a fork, even though it may not exist, to satisfy the setup script

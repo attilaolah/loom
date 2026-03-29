@@ -31,15 +31,18 @@
   tlsDir = "/etc/tls";
   tlsCrt = "${tlsDir}/tls.crt";
   tlsKey = "${tlsDir}/tls.key";
+
+  dnsAnthropic = "api.anthropic.com";
+  dnsOneCli = "www.onecli.sh";
 in {
   # Networking & Firewall
   networking = {
     inherit hostName;
     # TODO: Set up proper resolution for the .real aliases.
     extraHosts = ''
-      143.204.55.65 www.onecli.sh.real
-      127.0.0.1 www.onecli.sh
-      ::1 www.onecli.sh
+      143.204.55.65 ${dnsOneCli}.real
+      127.0.0.1 ${dnsOneCli}
+      ::1 ${dnsOneCli}
     '';
     firewall = {
       enable = true;
@@ -258,9 +261,12 @@ in {
   services.caddy = {
     enable = true;
     virtualHosts = let
-      llama.extraConfig = ''
-        bind 127.0.0.1
+      bind = ''
+        bind 127.0.0.1 ::1
         tls ${tlsCrt} ${tlsKey}
+      '';
+      llama.extraConfig = ''
+        ${bind}
 
         handle {
           reverse_proxy http://${gw}:${llamaPort} {
@@ -270,10 +276,9 @@ in {
       '';
     in {
       ${":1200"} = llama;
-      ${"api.anthropic.com"} = llama;
-      ${"www.onecli.sh"}.extraConfig = ''
-        bind 127.0.0.1
-        tls ${tlsCrt} ${tlsKey}
+      ${dnsAnthropic} = llama;
+      ${dnsOneCli}.extraConfig = ''
+        ${bind}
 
         @install path /cli/install
         handle @install {
@@ -284,11 +289,11 @@ in {
         }
 
         handle {
-          # DNS alias is used to avoid infinite recursion by handling this upstream via the vhost itself.
-          reverse_proxy https://www.onecli.sh.real {
-            header_up Host www.onecli.sh
+          # DNS alias is used to avoid infinite recursion by handling this upstream via the vhost itself
+          reverse_proxy https://${dnsOneCli}.real {
+            header_up Host ${dnsOneCli}
             transport http {
-              tls_server_name www.onecli.sh
+              tls_server_name ${dnsOneCli}
             }
           }
         }

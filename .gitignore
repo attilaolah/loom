@@ -1,3 +1,4 @@
 /result
+/tls/*.key
 /*.qcow2
 /.cache

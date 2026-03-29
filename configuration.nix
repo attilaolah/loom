@@ -29,11 +29,8 @@
   repoDir = "${gitDir}/work.git";
   gitConfig = "/etc/agent.gitconfig";
   tlsDir = "/etc/tls";
-  caCrt = "${tlsDir}/ca.crt";
-  caKey = "${tlsDir}/ca.key";
   tlsCrt = "${tlsDir}/tls.crt";
   tlsKey = "${tlsDir}/tls.key";
-  caBundle = "vm.ca.crt";
 in {
   # Networking & Firewall
   networking = {
@@ -77,6 +74,13 @@ in {
         memorySize = 32 * 1024; # 32Gi
         diskSize = 120 * 1000; # 120GB
         graphics = false;
+        sharedDirectories = {
+          tls = {
+            source = "$PWD/tls";
+            target = tlsDir;
+          };
+        };
+        fileSystems."${tlsDir}".options = lib.mkAfter ["ro"];
 
         forwardPorts = [
           {
@@ -134,7 +138,7 @@ in {
         ];
       }
     ];
-    pki.certificateFiles = [(pkgs.writeText caBundle "")];
+    pki.certificateFiles = [./tls/ca.crt];
   };
 
   services.openssh = {
@@ -157,53 +161,9 @@ in {
       # Writable nanoclaw working tree copied from the store path
       "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
-      "d ${tlsDir} 0750 root caddy -"
-    ];
-
-    mounts = [
-      {
-        description = "Bind runtime VM CA over static trust-store placeholder";
-        what = caCrt;
-        where = "/etc/static/ssl/certs/${caBundle}";
-        type = "none";
-        options = "bind";
-        requires = ["init-tls.service"];
-        after = ["init-tls.service"];
-        before = ["caddy.service"];
-        wantedBy = ["multi-user.target"];
-      }
     ];
 
     services = {
-      init-tls = {
-        description = "TLS setup";
-        wantedBy = ["multi-user.target"];
-        before = ["caddy.service"];
-        path = with pkgs; [coreutils step-cli cacert];
-        script = ''
-          if [ ! -s ${caCrt} ] || [ ! -s ${caKey} ]; then
-            step certificate create "VM CA" ${caCrt} ${caKey} \
-              --profile root-ca --no-password --insecure
-          fi
-
-          if [ ! -s ${tlsCrt} ] || [ ! -s ${tlsKey} ]; then
-            step certificate create localhost ${tlsCrt} ${tlsKey} \
-              --ca ${caCrt} --ca-key ${caKey} \
-              --no-password --insecure \
-              --profile leaf \
-              --san localhost \
-              --san www.onecli.sh
-          fi
-
-          chown root:root ${caCrt} ${caKey}
-          chown root:caddy ${tlsCrt} ${tlsKey}
-          chmod 0644 ${caCrt}
-          chmod 0600 ${caKey}
-          chmod 0440 ${tlsCrt}
-          chmod 0440 ${tlsKey}
-        '';
-        serviceConfig.Type = "oneshot";
-      };
       init-shell-path = {
         description = "PATH ~/.local/bin injection for ${agent}";
         wantedBy = ["multi-user.target"];
@@ -220,7 +180,6 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
-
       init-work = {
         description = "Git bridge between ${admin} and ${agent}";
         after = ["network.target"];

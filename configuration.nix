@@ -59,7 +59,7 @@
         git remote add origin https://github.com/${owner}/nanoclaw.git
       fi
 
-      exec claude
+      exec claude /setup
     '';
   };
 in {

@@ -130,19 +130,22 @@ in {
 
   # User Management
   users = {
-    users = {
+    users = let
+      openssh.authorizedKeys.keyFiles = [
+        (pkgs.fetchurl {
+          url = "https://github.com/${owner}.keys";
+          sha256 = "sha256-Y63CD0ZqmOhnFhRXwsp2Xb5aaoIWr7nUwHAvov38buc=";
+        })
+      ];
+    in {
       "${admin}" = {
+        inherit openssh;
         isNormalUser = true;
         extraGroups = ["docker" "nixbld" "wheel"];
         shell = pkgs.bashInteractive;
-        openssh.authorizedKeys.keyFiles = [
-          (pkgs.fetchurl {
-            url = "https://github.com/${owner}.keys";
-            sha256 = "sha256-Y63CD0ZqmOhnFhRXwsp2Xb5aaoIWr7nUwHAvov38buc=";
-          })
-        ];
       };
       "${agent}" = {
+        inherit openssh;
         isNormalUser = true;
         extraGroups = ["docker" "nixbld"];
         shell = pkgs.bashInteractive;
@@ -174,7 +177,7 @@ in {
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
       PermitRootLogin = "no";
-      AllowUsers = admins;
+      AllowUsers = admins ++ [agent];
     };
   };
 

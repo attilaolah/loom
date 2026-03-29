@@ -1,7 +1,6 @@
 {
   pkgs,
   lib,
-  nanoclaw,
   onecli,
   ...
 }: let
@@ -17,8 +16,9 @@
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;
+  hostName = "vm";
 
-  # Directories
+  # Directories & files
   home = "/home/${agent}";
   workDir = "${home}/work";
   ncDir = "${home}/nanoclaw";
@@ -27,11 +27,13 @@
   claudeState = "${home}/.claude.json";
   gitDir = "/srv/git";
   repoDir = "${gitDir}/work.git";
+  gitConfig = "/etc/agent.gitconfig";
+
   onecliInstallScript = builtins.readFile ./onecli/install.sh;
 in {
   # Networking & Firewall
   networking = {
-    hostName = "vm";
+    inherit hostName;
     extraHosts = ''
       127.0.0.1 www.onecli.sh
       ::1 www.onecli.sh
@@ -85,8 +87,8 @@ in {
             guest.address = "127.0.0.1";
             guest.port = 10254;
           }
-    ];
-  };
+        ];
+      };
     };
     docker.enable = true;
   };
@@ -142,11 +144,12 @@ in {
 
   systemd = {
     tmpfiles.rules = [
+      "L+ ${home}/.gitconfig - - - - ${gitConfig}"
       "d ${gitDir} 0775 ${admin} ${group} -"
       # 2xxx sets the setgid bit
       "d ${repoDir} 2775 ${admin} ${group} -"
       "d ${workDir} 2775 ${agent} ${group} -"
-      # Writable nanoclaw working tree copied from the store path.
+      # Writable nanoclaw working tree copied from the store path
       "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
       "d /etc/tls 0750 root root -"
@@ -169,52 +172,41 @@ in {
         serviceConfig.Type = "oneshot";
       };
       init-nanoclaw = {
-        description = "Nanoclaw git setup for ${agent}";
+        description = "NanoClaw git setup for ${agent}";
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
         path = with pkgs; [coreutils git util-linux];
         script = ''
-          # Create a writable working tree once from the immutable store source
-          if [ ! -e ${ncDir}/package.json ]; then
-            cp -a --no-preserve=ownership ${nanoclaw}/. ${ncDir}/
-            chown -R ${agent}:${group} ${ncDir}
-            chmod -R u+rwX ${ncDir}
+          if [ -d ${ncDir} ]; then
+            echo "${ncDir} already exists, nothing to do"
+            exit 0
           fi
 
-          # NanoClaw setup expects a git repo, ensure it appears as a git checkout
-          if [ ! -d ${ncDir}/.git ]; then
-            runuser -u ${agent} -- git init ${ncDir}
-            # Add upstream so that the setup script would find it
-            runuser -u ${agent} -- git -C ${ncDir} remote add upstream https://github.com/qwibitai/nanoclaw.git
-            # Also add a dummy fork, even though it may not exist, to satisfy the setup script
-            runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
-            # Pre-fetch the upstream so the agent can see remote branches
-            runuser -u ${agent} -- git -C ${ncDir} fetch upstream
-            # TODO: move to the user's global git config
-            runuser -u ${agent} -- git config --global user.email "agent@vm.local"
-            runuser -u ${agent} -- git config --global user.name "NanoClaw Agent"
-          fi
+          mkdir -p ${ncDir}
+          runuser -u ${agent} -- git clone https://github.com/qwibitai/nanoclaw.git ${ncDir}
+          runuser -u ${agent} -- git -C ${ncDir} remote rename origin upstream
+          # Add a fork, even though it may not exist, to satisfy the setup script
+          runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
         '';
         serviceConfig.Type = "oneshot";
       };
-      init-caddy-tls = {
-        description = "Caddy TLS setup";
+      init-tls = {
+        description = "TLS setup";
         wantedBy = ["multi-user.target"];
         before = ["caddy.service"];
         path = with pkgs; [coreutils step-cli cacert];
         script = ''
           if [ ! -s /etc/tls/ca.crt ] || [ ! -s /etc/tls/ca.key ]; then
-            step certificate create "Loom OneCLI Root CA" /etc/tls/ca.crt /etc/tls/ca.key \
+            step certificate create "VM CA" /etc/tls/ca.crt /etc/tls/ca.key \
               --profile root-ca --no-password --insecure
           fi
 
           if [ ! -s /etc/tls/tls.crt ] || [ ! -s /etc/tls/tls.key ]; then
-            step certificate create onecli.sh /etc/tls/tls.crt /etc/tls/tls.key \
+            step certificate create localhost /etc/tls/tls.crt /etc/tls/tls.key \
               --ca /etc/tls/ca.crt --ca-key /etc/tls/ca.key \
               --no-password --insecure \
               --profile leaf \
               --san localhost \
-              --san onecli.sh \
               --san www.onecli.sh
           fi
 
@@ -234,10 +226,10 @@ in {
         path = with pkgs; [coreutils p11-kit];
         script = ''
           mkdir -p /etc/ca-certificates/trust-source/anchors
-          install -m 0644 /etc/tls/ca.crt /etc/ca-certificates/trust-source/anchors/loom-onecli-ca.crt
+          install -m 0644 /etc/tls/ca.crt /etc/ca-certificates/trust-source/anchors/vm-ca.crt
 
-          # Register in p11-kit and regenerate extracted compatibility bundles.
-          trust anchor --store /etc/ca-certificates/trust-source/anchors/loom-onecli-ca.crt
+          # Register in p11-kit and regenerate extracted compatibility bundles
+          trust anchor --store /etc/ca-certificates/trust-source/anchors/vm-ca.crt
           trust extract-compat
         '';
         serviceConfig.Type = "oneshot";
@@ -306,11 +298,12 @@ in {
   environment = {
     systemPackages = with pkgs; [
       # NPM + Node runtime
-      # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus.
+      # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus
       (lib.hiPrio nodejs_25)
       nodePackages.npm
 
-      # Claude Code, the engine driving nanoclaw.
+      # Claude Code
+      # NanoClaw setup is implemented via a Claude Code skill so this is required, sadly
       claude-code
       onecli
 
@@ -354,11 +347,15 @@ in {
       clang_22
       llvm_22
 
+      # Python: a few older versions for convenience
+      python315
+      python314
+      python313
+
       # Common tools for coding tasks
       go
       cmake
       pkg-config
-      python315
       zig
 
       # The "Investigator" Kit
@@ -371,9 +368,14 @@ in {
     ];
     variables = {
       ANTHROPIC_BASE_URL = "http://${gw}:${llamaPort}";
-      # API key is not required by the host, but the client wants one.
+      # API key is not required by the host, but the client wants one
       ANTHROPIC_API_KEY = "sk-ant-local";
     };
+    etc."agent.gitconfig".text = ''
+      [user]
+        name = NanoClaw Agent
+        email = agent@${hostName}
+    '';
   };
   programs.git = {
     enable = true;

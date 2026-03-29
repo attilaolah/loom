@@ -35,7 +35,9 @@ in {
   # Networking & Firewall
   networking = {
     inherit hostName;
+    # TODO: Set up proper resolution for the .real aliases.
     extraHosts = ''
+      143.204.55.65 www.onecli.sh.real
       127.0.0.1 www.onecli.sh
       ::1 www.onecli.sh
     '';
@@ -80,7 +82,6 @@ in {
             target = tlsDir;
           };
         };
-        fileSystems."${tlsDir}".options = lib.mkAfter ["ro"];
 
         forwardPorts = [
           {
@@ -164,6 +165,22 @@ in {
     ];
 
     services = {
+      tls-permissions = {
+        description = "TLS permission fixup";
+        wantedBy = ["multi-user.target"];
+        before = ["caddy.service"];
+        after = ["local-fs.target"];
+        path = with pkgs; [coreutils];
+        script = ''
+          chown root:root ${tlsDir}/ca.crt ${tlsDir}/ca.key
+          chown root:caddy ${tlsDir}/tls.crt ${tlsDir}/tls.key
+          chmod 0644 ${tlsDir}/ca.crt
+          chmod 0600 ${tlsDir}/ca.key
+          chmod 0440 ${tlsDir}/tls.crt
+          chmod 0440 ${tlsDir}/tls.key
+        '';
+        serviceConfig.Type = "oneshot";
+      };
       init-shell-path = {
         description = "PATH ~/.local/bin injection for ${agent}";
         wantedBy = ["multi-user.target"];
@@ -240,24 +257,43 @@ in {
 
   services.caddy = {
     enable = true;
-    virtualHosts."www.onecli.sh".extraConfig = ''
-      bind 127.0.0.1
-      tls ${tlsCrt} ${tlsKey}
+    virtualHosts = let
+      llama.extraConfig = ''
+        bind 127.0.0.1
+        tls ${tlsCrt} ${tlsKey}
 
-      @install path /cli/install
-      handle @install {
-        header Content-Type text/plain
-        root * /
-        rewrite * ${./onecli/install.sh}
-        file_server
-      }
-
-      handle {
-        reverse_proxy https://www.onecli.sh {
-          header_up Host www.onecli.sh
+        handle {
+          reverse_proxy http://${gw}:${llamaPort} {
+            header_up Host localhost
+          }
         }
-      }
-    '';
+      '';
+    in {
+      ${":1200"} = llama;
+      ${"api.anthropic.com"} = llama;
+      ${"www.onecli.sh"}.extraConfig = ''
+        bind 127.0.0.1
+        tls ${tlsCrt} ${tlsKey}
+
+        @install path /cli/install
+        handle @install {
+          header Content-Type text/plain
+          root * /
+          rewrite * ${./onecli/install.sh}
+          file_server
+        }
+
+        handle {
+          # DNS alias is used to avoid infinite recursion by handling this upstream via the vhost itself.
+          reverse_proxy https://www.onecli.sh.real {
+            header_up Host www.onecli.sh
+            transport http {
+              tls_server_name www.onecli.sh
+            }
+          }
+        }
+      '';
+    };
   };
 
   environment = {
@@ -312,10 +348,9 @@ in {
       clang_22
       llvm_22
 
-      # Python: a few older versions for convenience
-      python315
+      # Python: bleeding edge + stable versions
+      (lib.hiPrio python315)
       python314
-      python313
 
       # Common tools for coding tasks
       go

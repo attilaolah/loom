@@ -38,12 +38,7 @@ in {
   # Networking & Firewall
   networking = {
     inherit hostName;
-    # TODO: Set up proper resolution for the .real aliases.
-    extraHosts = ''
-      143.204.55.65 ${dnsOneCli}.real
-      127.0.0.1 ${dnsAnthropic} ${dnsOneCli}
-      ::1 ${dnsAnthropic} ${dnsOneCli}
-    '';
+    nameservers = ["127.0.0.1" "::1"];
     firewall = {
       enable = true;
       allowedTCPPorts = [22];
@@ -237,8 +232,8 @@ in {
       };
       init-nanoclaw = {
         description = "NanoClaw git setup for ${agent}";
-        wants = ["network-online.target"];
-        after = ["network-online.target" "nss-lookup.target"];
+        wants = ["network-online.target" "coredns-real-proxy.service"];
+        after = ["network-online.target" "nss-lookup.target" "coredns-real-proxy.service"];
         wantedBy = ["multi-user.target"];
         path = with pkgs; [coreutils git util-linux];
         script = ''
@@ -254,6 +249,42 @@ in {
           runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
         '';
         serviceConfig.Type = "oneshot";
+      };
+      coredns-real-proxy = {
+        description = "CoreDNS rewrite proxy for .real names";
+        wants = ["network-online.target"];
+        after = ["network-online.target" "nss-lookup.target"];
+        before = ["caddy.service"];
+        wantedBy = ["multi-user.target"];
+        serviceConfig = {
+          ExecStart = let
+            corefile = pkgs.writeText "Corefile-real-proxy" ''
+              real:53 {
+                bind 127.0.0.1 ::1
+                rewrite name suffix .real .
+                forward . ${ns}
+                cache 30
+              }
+
+              .:53 {
+                bind 127.0.0.1 ::1
+                hosts {
+                  127.0.0.1 ${dnsAnthropic} ${dnsOneCli}
+                  ::1 ${dnsAnthropic} ${dnsOneCli}
+                  fallthrough
+                }
+                forward . ${ns}
+                cache 30
+              }
+            '';
+          in "${pkgs.coredns}/bin/coredns -conf ${corefile}";
+          Restart = "always";
+          RestartSec = 2;
+        };
+      };
+      caddy = {
+        wants = ["coredns-real-proxy.service"];
+        after = ["coredns-real-proxy.service"];
       };
     };
   };
@@ -288,8 +319,14 @@ in {
         }
 
         handle {
-          # DNS alias is used to avoid infinite recursion by handling this upstream via the vhost itself
-          reverse_proxy https://${dnsOneCli}.real {
+          # Resolve and refresh upstream dynamically via DNS rewrite proxy.
+          reverse_proxy {
+            dynamic a {
+              name ${dnsOneCli}.real
+              port 443
+              refresh 30s
+              resolvers 127.0.0.1
+            }
             header_up Host ${dnsOneCli}
             transport http {
               tls_server_name ${dnsOneCli}

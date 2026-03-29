@@ -270,9 +270,9 @@ in {
         serviceConfig = {
           ExecStart = let
             corefile = pkgs.writeText "Corefile-real-proxy" ''
-              real:53 {
+              ${dnsOneCli}.real:53 {
                 bind 127.0.0.1 ::1
-                rewrite name suffix .real .
+                rewrite name exact ${dnsOneCli}.real ${dnsOneCli}
                 forward . ${ns}
                 cache 30
               }

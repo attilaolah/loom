@@ -151,7 +151,7 @@ in {
       # Writable nanoclaw working tree copied from the store path
       "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
-      "d /etc/tls 0750 root root -"
+      "d /etc/tls 0750 root caddy -"
     ];
 
     services = {
@@ -209,10 +209,11 @@ in {
               --san www.onecli.sh
           fi
 
-          chown root:root /etc/tls/ca.crt /etc/tls/ca.key /etc/tls/tls.crt
-          chmod 0644 /etc/tls/ca.crt /etc/tls/tls.crt
+          chown root:root /etc/tls/ca.crt /etc/tls/ca.key
+          chown root:caddy /etc/tls/tls.crt /etc/tls/tls.key
+          chmod 0644 /etc/tls/ca.crt
+          chmod 0440 /etc/tls/tls.crt
           chmod 0600 /etc/tls/ca.key
-          chown root:caddy /etc/tls/tls.key
           chmod 0440 /etc/tls/tls.key
         '';
         serviceConfig.Type = "oneshot";

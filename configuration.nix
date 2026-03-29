@@ -250,7 +250,7 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
-      coredns-real-proxy = {
+      coredns-proxy = {
         description = "CoreDNS rewrite proxy for .real names";
         wants = ["network-online.target"];
         after = ["network-online.target" "nss-lookup.target"];

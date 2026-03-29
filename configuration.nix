@@ -12,7 +12,7 @@
   owner = "attilaolah";
 
   # Networking
-  llamaPort = "12000";
+  llamaRemote = "12000";
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;
@@ -58,7 +58,7 @@ in {
         iptables -A OUTPUT -d ${ns} -p tcp --dport 53 -j ACCEPT
 
         # Allow the llama.cpp server running on the host
-        iptables -A OUTPUT -d ${gw} -p tcp --dport ${llamaPort} -j ACCEPT
+        iptables -A OUTPUT -d ${gw} -p tcp --dport ${llamaRemote} -j ACCEPT
 
         # Block all other traffic to private/internal ranges
         iptables -A OUTPUT -d 192.168.0.0/16 -j DROP
@@ -269,13 +269,12 @@ in {
         ${bind}
 
         handle {
-          reverse_proxy http://${gw}:${llamaPort} {
+          reverse_proxy http://${gw}:${llamaRemote} {
             header_up Host localhost
           }
         }
       '';
     in {
-      ${":1200"} = llama;
       ${dnsAnthropic} = llama;
       ${dnsOneCli}.extraConfig = ''
         ${bind}
@@ -372,7 +371,6 @@ in {
       lldb
     ];
     variables = {
-      ANTHROPIC_BASE_URL = "http://${gw}:${llamaPort}";
       # API key is not required by the host, but the client wants one
       ANTHROPIC_API_KEY = "sk-ant-local";
     };

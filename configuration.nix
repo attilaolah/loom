@@ -70,7 +70,7 @@ in {
     nameservers = ["127.0.0.1" "::1"];
     firewall = {
       enable = true;
-      allowedTCPPorts = [22];
+      allowedTCPPorts = [22 443 10254];
 
       # Restrict outgoing traffic
       extraCommands = ''
@@ -83,6 +83,8 @@ in {
 
         # Allow the llama.cpp server running on the host
         iptables -A OUTPUT -d ${gw} -p tcp --dport ${llamaRemote} -j ACCEPT
+        # Allow local self-access via the VM IP (used by hostname overrides)
+        iptables -A OUTPUT -d ${vm} -j ACCEPT
 
         # Block all other traffic to private/internal ranges
         iptables -A OUTPUT -d 192.168.0.0/16 -j DROP
@@ -94,8 +96,7 @@ in {
     };
   };
 
-  # This block is specifically for settings that only apply
-  # when building the QEMU VM via config.system.build.vm
+  # This block is specifically for settings that only apply when building the QEMU VM via config.system.build.vm
   virtualisation = {
     vmVariant = {
       virtualisation = {

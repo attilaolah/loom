@@ -64,6 +64,24 @@
         onecliPkg = mkOnecli pkgs;
         nixosConfig = mkNixosConfig system;
         vm = nixosConfig.config.system.build.vm;
+        vmRunner = lib.getExe' vm "run-${nixosConfig.config.networking.hostName}-vm";
+        vmApp = pkgs.writeShellApplication {
+          name = "vm";
+          runtimeInputs = with pkgs; [coreutils];
+          text = ''
+            set -euo pipefail
+
+            tls_dir="$(readlink -f "$PWD/tls")"
+            if [ ! -d "$tls_dir" ]; then
+              echo "error: tls directory not found at $tls_dir" >&2
+              echo "hint: run 'nix run .#tls-setup' from the repo root first" >&2
+              exit 1
+            fi
+
+            export TLS_DIR="$tls_dir"
+            exec ${vmRunner} "$@"
+          '';
+        };
         tlsSetup = pkgs.writeShellApplication {
           name = "tls-setup";
           runtimeInputs = with pkgs; [coreutils step-cli];
@@ -138,7 +156,7 @@
         apps = {
           vm = {
             type = "app";
-            program = lib.getExe' vm "run-${nixosConfig.config.networking.hostName}-vm";
+            program = lib.getExe vmApp;
           };
           tls-setup = {
             type = "app";

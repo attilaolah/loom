@@ -76,7 +76,7 @@ in {
         graphics = false;
         sharedDirectories = {
           tls = {
-            source = "$PWD/tls";
+            source = "$TLS_DIR";
             target = tlsDir;
           };
         };

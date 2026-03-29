@@ -2,6 +2,7 @@
   pkgs,
   lib,
   nanoclaw,
+  onecli,
   ...
 }: let
   # Users
@@ -137,7 +138,7 @@ in {
 
     services = {
       init-claude = {
-        description = "Preseed Claude settings for ${agent}";
+        description = "Claude settings for ${agent}";
         wantedBy = ["multi-user.target"];
         path = with pkgs; [coreutils];
         script = ''
@@ -175,6 +176,23 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
+      init-shell-path = {
+        description = "PATH ~/.local/bin injection for ${agent}";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils gnugrep gnused];
+        script = ''
+          bashrc=${home}/.bashrc
+          path_line='export PATH="$PATH:${home}/.local/bin"'
+
+          touch "$bashrc"
+          if ! grep -Fqx "$path_line" "$bashrc"; then
+            echo "$path_line" >> "$bashrc"
+            chown ${agent}:${group} "$bashrc"
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
+
       init-work = {
         description = "Git bridge between ${admin} and ${agent}";
         after = ["network.target"];
@@ -208,6 +226,7 @@ in {
 
       # Claude Code, the engine driving nanoclaw.
       claude-code
+      onecli
 
       # Docker
       docker

@@ -319,14 +319,8 @@ in {
         }
 
         handle {
-          # Resolve and refresh upstream dynamically via DNS rewrite proxy.
-          reverse_proxy {
-            dynamic a {
-              name ${dnsOneCli}.real
-              port 443
-              refresh 30s
-              resolvers 127.0.0.1
-            }
+          # Resolved via the CoreDNS proxy to avoid an infinite recursion via this vhost.
+          reverse_proxy https://${dnsOneCli}.real {
             header_up Host ${dnsOneCli}
             transport http {
               tls_server_name ${dnsOneCli}

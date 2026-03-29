@@ -163,7 +163,6 @@ in {
       "d ${repoDir} 2775 ${admin} ${group} -"
       "d ${workDir} 2775 ${agent} ${group} -"
       # Writable nanoclaw working tree copied from the store path
-      "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
     ];
 

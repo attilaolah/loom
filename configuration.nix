@@ -16,6 +16,7 @@
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;
+  vm = host 15;
   hostName = "vm";
 
   # Directories & files
@@ -280,8 +281,7 @@ in {
               .:53 {
                 bind 127.0.0.1 ::1
                 hosts {
-                  127.0.0.1 ${dnsAnthropic} ${dnsOneCli}
-                  ::1 ${dnsAnthropic} ${dnsOneCli}
+                  ${vm} ${dnsAnthropic} ${dnsOneCli}
                   fallthrough
                 }
                 forward . ${ns}
@@ -304,7 +304,7 @@ in {
     enable = true;
     virtualHosts = let
       bind = ''
-        bind 127.0.0.1 ::1
+        bind ${vm} 127.0.0.1 ::1
         tls ${tlsCrt} ${tlsKey}
       '';
       llama.extraConfig = ''

@@ -237,7 +237,8 @@ in {
       };
       init-nanoclaw = {
         description = "NanoClaw git setup for ${agent}";
-        after = ["network.target"];
+        wants = ["network-online.target"];
+        after = ["network-online.target" "nss-lookup.target"];
         wantedBy = ["multi-user.target"];
         path = with pkgs; [coreutils git util-linux];
         script = ''

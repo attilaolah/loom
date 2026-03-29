@@ -28,7 +28,12 @@
   gitDir = "/srv/git";
   repoDir = "${gitDir}/work.git";
   gitConfig = "/etc/agent.gitconfig";
-
+  tlsDir = "/etc/tls";
+  caCrt = "${tlsDir}/ca.crt";
+  caKey = "${tlsDir}/ca.key";
+  tlsCrt = "${tlsDir}/tls.crt";
+  tlsKey = "${tlsDir}/tls.key";
+  caBundle = "vm.ca.crt";
 in {
   # Networking & Firewall
   networking = {
@@ -129,6 +134,7 @@ in {
         ];
       }
     ];
+    pki.certificateFiles = [(pkgs.writeText caBundle "")];
   };
 
   services.openssh = {
@@ -151,86 +157,50 @@ in {
       # Writable nanoclaw working tree copied from the store path
       "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
-      "d /etc/tls 0750 root caddy -"
+      "d ${tlsDir} 0750 root caddy -"
+    ];
+
+    mounts = [
+      {
+        description = "Bind runtime VM CA over static trust-store placeholder";
+        what = caCrt;
+        where = "/etc/static/ssl/certs/${caBundle}";
+        type = "none";
+        options = "bind";
+        requires = ["init-tls.service"];
+        after = ["init-tls.service"];
+        before = ["caddy.service"];
+        wantedBy = ["multi-user.target"];
+      }
     ];
 
     services = {
-      init-claude = {
-        description = "Claude settings for ${agent}";
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils];
-        script = ''
-          if [ ! -f ${claudeState} ]; then
-            install -m 0644 -o ${agent} -g ${group} ${./claude/state.json} ${claudeState}
-          fi
-
-          if [ ! -f ${claudeSettings} ]; then
-            install -m 0644 -o ${agent} -g ${group} ${./claude/settings.json} ${claudeSettings}
-          fi
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      init-nanoclaw = {
-        description = "NanoClaw git setup for ${agent}";
-        after = ["network.target"];
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils git util-linux];
-        script = ''
-          if [ -d ${ncDir} ]; then
-            echo "${ncDir} already exists, nothing to do"
-            exit 0
-          fi
-
-          mkdir -p ${ncDir}
-          runuser -u ${agent} -- git clone https://github.com/qwibitai/nanoclaw.git ${ncDir}
-          runuser -u ${agent} -- git -C ${ncDir} remote rename origin upstream
-          # Add a fork, even though it may not exist, to satisfy the setup script
-          runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
-        '';
-        serviceConfig.Type = "oneshot";
-      };
       init-tls = {
         description = "TLS setup";
         wantedBy = ["multi-user.target"];
         before = ["caddy.service"];
         path = with pkgs; [coreutils step-cli cacert];
         script = ''
-          if [ ! -s /etc/tls/ca.crt ] || [ ! -s /etc/tls/ca.key ]; then
-            step certificate create "VM CA" /etc/tls/ca.crt /etc/tls/ca.key \
+          if [ ! -s ${caCrt} ] || [ ! -s ${caKey} ]; then
+            step certificate create "VM CA" ${caCrt} ${caKey} \
               --profile root-ca --no-password --insecure
           fi
 
-          if [ ! -s /etc/tls/tls.crt ] || [ ! -s /etc/tls/tls.key ]; then
-            step certificate create localhost /etc/tls/tls.crt /etc/tls/tls.key \
-              --ca /etc/tls/ca.crt --ca-key /etc/tls/ca.key \
+          if [ ! -s ${tlsCrt} ] || [ ! -s ${tlsKey} ]; then
+            step certificate create localhost ${tlsCrt} ${tlsKey} \
+              --ca ${caCrt} --ca-key ${caKey} \
               --no-password --insecure \
               --profile leaf \
               --san localhost \
               --san www.onecli.sh
           fi
 
-          chown root:root /etc/tls/ca.crt /etc/tls/ca.key
-          chown root:caddy /etc/tls/tls.crt /etc/tls/tls.key
-          chmod 0644 /etc/tls/ca.crt
-          chmod 0440 /etc/tls/tls.crt
-          chmod 0600 /etc/tls/ca.key
-          chmod 0440 /etc/tls/tls.key
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      init-system-ca-store = {
-        description = "Install runtime OneCLI CA into system trust store";
-        wantedBy = ["multi-user.target"];
-        after = ["init-caddy-tls.service"];
-        before = ["caddy.service"];
-        path = with pkgs; [coreutils p11-kit];
-        script = ''
-          mkdir -p /etc/ca-certificates/trust-source/anchors
-          install -m 0644 /etc/tls/ca.crt /etc/ca-certificates/trust-source/anchors/vm-ca.crt
-
-          # Register in p11-kit and regenerate extracted compatibility bundles
-          trust anchor --store /etc/ca-certificates/trust-source/anchors/vm-ca.crt
-          trust extract-compat
+          chown root:root ${caCrt} ${caKey}
+          chown root:caddy ${tlsCrt} ${tlsKey}
+          chmod 0644 ${caCrt}
+          chmod 0600 ${caKey}
+          chmod 0440 ${tlsCrt}
+          chmod 0440 ${tlsKey}
         '';
         serviceConfig.Type = "oneshot";
       };
@@ -272,6 +242,40 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
+      init-claude = {
+        description = "Claude settings for ${agent}";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils];
+        script = ''
+          if [ ! -f ${claudeState} ]; then
+            install -m 0644 -o ${agent} -g ${group} ${./claude/state.json} ${claudeState}
+          fi
+
+          if [ ! -f ${claudeSettings} ]; then
+            install -m 0644 -o ${agent} -g ${group} ${./claude/settings.json} ${claudeSettings}
+          fi
+        '';
+        serviceConfig.Type = "oneshot";
+      };
+      init-nanoclaw = {
+        description = "NanoClaw git setup for ${agent}";
+        after = ["network.target"];
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [coreutils git util-linux];
+        script = ''
+          if [ -d ${ncDir} ]; then
+            echo "${ncDir} already exists, nothing to do"
+            exit 0
+          fi
+
+          mkdir -p ${ncDir}
+          runuser -u ${agent} -- git clone https://github.com/qwibitai/nanoclaw.git ${ncDir}
+          runuser -u ${agent} -- git -C ${ncDir} remote rename origin upstream
+          # Add a fork, even though it may not exist, to satisfy the setup script
+          runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
+        '';
+        serviceConfig.Type = "oneshot";
+      };
     };
   };
 
@@ -279,7 +283,7 @@ in {
     enable = true;
     virtualHosts."www.onecli.sh".extraConfig = ''
       bind 127.0.0.1
-      tls /etc/tls/tls.crt /etc/tls/tls.key
+      tls ${tlsCrt} ${tlsKey}
 
       @install path /cli/install
       handle @install {

@@ -34,6 +34,34 @@
 
   dnsAnthropic = "api.anthropic.com";
   dnsOneCli = "www.onecli.sh";
+
+  setupNanoClaw = pkgs.writeShellApplication {
+    name = "setup-nanoclaw";
+    runtimeInputs = with pkgs; [git claude-code];
+    text = ''
+      set -euo pipefail
+
+      mkdir -p ${ncDir}
+      cd ${ncDir}
+
+      if [ ! -d .git ]; then
+        git clone https://github.com/qwibitai/nanoclaw.git .
+      fi
+
+      if git remote get-url origin >/dev/null 2>&1; then
+        if ! git remote get-url upstream >/dev/null 2>&1; then
+          git remote rename origin upstream
+        fi
+      fi
+
+      if ! git remote get-url origin >/dev/null 2>&1; then
+        # Add a fork, even though it may not exist, to satisfy the setup script.
+        git remote add origin https://github.com/${owner}/nanoclaw.git
+      fi
+
+      exec claude
+    '';
+  };
 in {
   # Networking & Firewall
   networking = {
@@ -230,26 +258,6 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
-      init-nanoclaw = {
-        description = "NanoClaw git setup for ${agent}";
-        wants = ["network-online.target" "coredns-real-proxy.service"];
-        after = ["network-online.target" "nss-lookup.target" "coredns-real-proxy.service"];
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils git util-linux];
-        script = ''
-          if [ -d ${ncDir} ]; then
-            echo "${ncDir} already exists, nothing to do"
-            exit 0
-          fi
-
-          runuser -u ${agent} -- mkdir -p ${ncDir}
-          runuser -u ${agent} -- git clone https://github.com/qwibitai/nanoclaw.git ${ncDir}
-          runuser -u ${agent} -- git -C ${ncDir} remote rename origin upstream
-          # Add a fork, even though it may not exist, to satisfy the setup script
-          runuser -u ${agent} -- git -C ${ncDir} remote add origin https://github.com/${owner}/nanoclaw.git
-        '';
-        serviceConfig.Type = "oneshot";
-      };
       coredns = {
         description = "CoreDNS rewrite proxy for .real names";
         wants = ["network-online.target"];
@@ -277,14 +285,14 @@ in {
                 cache 30
               }
             '';
-          in "${pkgs.coredns}/bin/coredns -conf ${corefile}";
+          in "${pkgs.lib.getExe pkgs.coredns} -conf ${corefile}";
           Restart = "always";
           RestartSec = 2;
         };
       };
       caddy = {
-        wants = ["coredns-real-proxy.service"];
-        after = ["coredns-real-proxy.service"];
+        wants = ["coredns.service"];
+        after = ["coredns.service"];
       };
     };
   };
@@ -338,8 +346,8 @@ in {
       (lib.hiPrio nodejs_25)
       nodePackages.npm
 
-      # Claude Code
-      # NanoClaw setup is implemented via a Claude Code skill so this is required, sadly
+      # Claude Code and manual NanoClaw bootstrap helper
+      setupNanoClaw
       claude-code
       onecli
 

@@ -84,7 +84,7 @@ in {
     users = {
       "${admin}" = {
         isNormalUser = true;
-        extraGroups = ["wheel"];
+        extraGroups = ["docker" "nixbld" "wheel"];
         shell = pkgs.bashInteractive;
         openssh.authorizedKeys.keyFiles = [
           (pkgs.fetchurl {

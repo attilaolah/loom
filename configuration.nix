@@ -87,7 +87,7 @@ in {
         shell = pkgs.bashInteractive;
         openssh.authorizedKeys.keyFiles = [
           (pkgs.fetchurl {
-            url = "https://github.com/attilaolah.keys";
+            url = "https://github.com/${owner}.keys";
             sha256 = "sha256-Y63CD0ZqmOhnFhRXwsp2Xb5aaoIWr7nUwHAvov38buc=";
           })
         ];

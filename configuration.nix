@@ -85,8 +85,8 @@ in {
             guest.address = "127.0.0.1";
             guest.port = 10254;
           }
-        ];
-      };
+    ];
+  };
     };
     docker.enable = true;
   };
@@ -127,9 +127,6 @@ in {
           }
         ];
       }
-    ];
-    pki.certificateFiles = [
-      "/etc/tls/ca.crt"
     ];
   };
 
@@ -204,7 +201,7 @@ in {
         description = "Caddy TLS setup";
         wantedBy = ["multi-user.target"];
         before = ["caddy.service"];
-        path = with pkgs; [coreutils step-cli];
+        path = with pkgs; [coreutils step-cli cacert];
         script = ''
           if [ ! -s /etc/tls/ca.crt ] || [ ! -s /etc/tls/ca.key ]; then
             step certificate create "Loom OneCLI Root CA" /etc/tls/ca.crt /etc/tls/ca.key \
@@ -226,6 +223,22 @@ in {
           chmod 0600 /etc/tls/ca.key
           chown root:caddy /etc/tls/tls.key
           chmod 0440 /etc/tls/tls.key
+        '';
+        serviceConfig.Type = "oneshot";
+      };
+      init-system-ca-store = {
+        description = "Install runtime OneCLI CA into system trust store";
+        wantedBy = ["multi-user.target"];
+        after = ["init-caddy-tls.service"];
+        before = ["caddy.service"];
+        path = with pkgs; [coreutils p11-kit];
+        script = ''
+          mkdir -p /etc/ca-certificates/trust-source/anchors
+          install -m 0644 /etc/tls/ca.crt /etc/ca-certificates/trust-source/anchors/loom-onecli-ca.crt
+
+          # Register in p11-kit and regenerate extracted compatibility bundles.
+          trust anchor --store /etc/ca-certificates/trust-source/anchors/loom-onecli-ca.crt
+          trust extract-compat
         '';
         serviceConfig.Type = "oneshot";
       };

@@ -73,6 +73,13 @@ in {
             host.port = 2222;
             guest.port = 22;
           }
+          {
+            from = "host";
+            host.address = "127.0.0.1";
+            host.port = 10254;
+            guest.address = "127.0.0.1";
+            guest.port = 10254;
+          }
         ];
       };
     };

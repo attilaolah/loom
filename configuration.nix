@@ -27,10 +27,15 @@
   claudeState = "${home}/.claude.json";
   gitDir = "/srv/git";
   repoDir = "${gitDir}/work.git";
+  onecliInstallScript = builtins.readFile ./onecli/install.sh;
 in {
   # Networking & Firewall
   networking = {
     hostName = "vm";
+    extraHosts = ''
+      127.0.0.1 www.onecli.sh
+      ::1 www.onecli.sh
+    '';
     firewall = {
       enable = true;
       allowedTCPPorts = [22];
@@ -111,17 +116,22 @@ in {
   };
 
   # Security & SSH
-  security.sudo.extraRules = [
-    {
-      users = admins;
-      commands = [
-        {
-          command = "ALL";
-          options = ["NOPASSWD"];
-        }
-      ];
-    }
-  ];
+  security = {
+    sudo.extraRules = [
+      {
+        users = admins;
+        commands = [
+          {
+            command = "ALL";
+            options = ["NOPASSWD"];
+          }
+        ];
+      }
+    ];
+    pki.certificateFiles = [
+      "/etc/tls/ca.crt"
+    ];
+  };
 
   services.openssh = {
     enable = true;
@@ -142,6 +152,7 @@ in {
       # Writable nanoclaw working tree copied from the store path.
       "d ${ncDir} 0755 ${agent} ${group} -"
       "d ${claudeDir} 0755 ${agent} ${group} -"
+      "d /etc/tls 0750 root root -"
     ];
 
     services = {
@@ -189,6 +200,35 @@ in {
         '';
         serviceConfig.Type = "oneshot";
       };
+      init-caddy-tls = {
+        description = "Caddy TLS setup";
+        wantedBy = ["multi-user.target"];
+        before = ["caddy.service"];
+        path = with pkgs; [coreutils step-cli];
+        script = ''
+          if [ ! -s /etc/tls/ca.crt ] || [ ! -s /etc/tls/ca.key ]; then
+            step certificate create "Loom OneCLI Root CA" /etc/tls/ca.crt /etc/tls/ca.key \
+              --profile root-ca --no-password --insecure
+          fi
+
+          if [ ! -s /etc/tls/tls.crt ] || [ ! -s /etc/tls/tls.key ]; then
+            step certificate create onecli.sh /etc/tls/tls.crt /etc/tls/tls.key \
+              --ca /etc/tls/ca.crt --ca-key /etc/tls/ca.key \
+              --no-password --insecure \
+              --profile leaf \
+              --san localhost \
+              --san onecli.sh \
+              --san www.onecli.sh
+          fi
+
+          chown root:root /etc/tls/ca.crt /etc/tls/ca.key /etc/tls/tls.crt
+          chmod 0644 /etc/tls/ca.crt /etc/tls/tls.crt
+          chmod 0600 /etc/tls/ca.key
+          chown root:caddy /etc/tls/tls.key
+          chmod 0440 /etc/tls/tls.key
+        '';
+        serviceConfig.Type = "oneshot";
+      };
       init-shell-path = {
         description = "PATH ~/.local/bin injection for ${agent}";
         wantedBy = ["multi-user.target"];
@@ -228,6 +268,26 @@ in {
         serviceConfig.Type = "oneshot";
       };
     };
+  };
+
+  services.caddy = {
+    enable = true;
+    virtualHosts."www.onecli.sh".extraConfig = ''
+      bind 127.0.0.1
+      tls /etc/tls/tls.crt /etc/tls/tls.key
+
+      @install path /cli/install
+      handle @install {
+        header Content-Type text/plain
+        respond "${onecliInstallScript}" 200
+      }
+
+      handle {
+        reverse_proxy https://www.onecli.sh {
+          header_up Host www.onecli.sh
+        }
+      }
+    '';
   };
 
   environment = {

@@ -104,6 +104,7 @@ in {
         isNormalUser = true;
         extraGroups = ["docker" "nixbld"];
         shell = pkgs.bashInteractive;
+        linger = true;
       };
     };
     mutableUsers = false;

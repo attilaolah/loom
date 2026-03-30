@@ -1,15 +1,14 @@
 {
   pkgs,
   lib,
-  onecli,
   ...
 }: let
   # Users
   admin = "admin";
   agent = "agent";
   admins = [admin];
-  group = "users";
   owner = "attilaolah";
+  domain = "dorn.haus";
 
   # Networking
   llamaRemote = "12000";
@@ -18,19 +17,11 @@
   ns = host 3;
   vm = host 15;
   hostName = "vm";
+  clawPort = 18789;
 
   # Directories & files
   home = "/home/${agent}";
-  claudeDir = "${home}/.claude";
-  claudeSettings = "${claudeDir}/settings.json";
-  claudeState = "${home}/.claude.json";
-  gitConfig = "/etc/agent.gitconfig";
-  tlsDir = "/etc/tls";
-  tlsCrt = "${tlsDir}/tls.crt";
-  tlsKey = "${tlsDir}/tls.key";
-
-  dnsAnthropic = "api.anthropic.com";
-  dnsOneCli = "www.onecli.sh";
+  gitConfig = "git.agent.conf";
 in {
   # Networking & Firewall
   networking = {
@@ -38,7 +29,7 @@ in {
     nameservers = ["127.0.0.1" "::1"];
     firewall = {
       enable = true;
-      allowedTCPPorts = [22 443 10254];
+      allowedTCPPorts = [22 clawPort];
 
       # Restrict outgoing traffic
       extraCommands = ''
@@ -72,25 +63,21 @@ in {
         memorySize = 32 * 1024; # 32Gi
         diskSize = 120 * 1000; # 120GB
         graphics = false;
-        sharedDirectories = {
-          tls = {
-            source = "$TLS_DIR";
-            target = tlsDir;
+        forwardPorts = let
+          h = port: {
+            inherit port;
+            address = "127.0.0.1";
           };
-        };
-
-        forwardPorts = [
+        in [
           {
             from = "host";
-            host.port = 2222;
+            host = h 2222;
             guest.port = 22;
           }
           {
             from = "host";
-            host.address = "127.0.0.1";
-            host.port = 10254;
-            guest.address = "127.0.0.1";
-            guest.port = 10254;
+            host = h clawPort;
+            guest.port = clawPort;
           }
         ];
       };
@@ -138,7 +125,6 @@ in {
         ];
       }
     ];
-    pki.certificateFiles = [./tls/ca.crt];
   };
 
   services.openssh = {
@@ -153,157 +139,22 @@ in {
 
   systemd = {
     tmpfiles.rules = [
-      "L+ ${home}/.gitconfig - - - - ${gitConfig}"
-      "d ${claudeDir} 0755 ${agent} ${group} -"
+      "L+ ${home}/.gitconfig - - - - /etc/${gitConfig}"
     ];
-
-    services = {
-      tls-permissions = {
-        description = "TLS permission fixup";
-        wantedBy = ["multi-user.target"];
-        before = ["caddy.service"];
-        after = ["local-fs.target"];
-        path = with pkgs; [coreutils];
-        script = ''
-          chown root:root ${tlsDir}/ca.crt ${tlsDir}/ca.key
-          chown root:caddy ${tlsDir}/tls.crt ${tlsDir}/tls.key
-          chmod 0644 ${tlsDir}/ca.crt
-          chmod 0600 ${tlsDir}/ca.key
-          chmod 0440 ${tlsDir}/tls.crt
-          chmod 0440 ${tlsDir}/tls.key
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      init-shell-path = {
-        description = "PATH ~/.local/bin injection for ${agent}";
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils gnugrep gnused];
-        script = ''
-          bashrc=${home}/.bashrc
-          path_line='export PATH="$PATH:${home}/.local/bin"'
-
-          touch "$bashrc"
-          if ! grep -Fqx "$path_line" "$bashrc"; then
-            echo "$path_line" >> "$bashrc"
-            chown ${agent}:${group} "$bashrc"
-          fi
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      init-claude = {
-        description = "Claude settings for ${agent}";
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils];
-        script = ''
-          if [ ! -f ${claudeState} ]; then
-            install -m 0644 -o ${agent} -g ${group} ${./claude/state.json} ${claudeState}
-          fi
-
-          if [ ! -f ${claudeSettings} ]; then
-            install -m 0644 -o ${agent} -g ${group} ${./claude/settings.json} ${claudeSettings}
-          fi
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      coredns = {
-        description = "CoreDNS rewrite proxy for .real names";
-        wants = ["network-online.target"];
-        after = ["network-online.target" "nss-lookup.target"];
-        before = ["caddy.service"];
-        wantedBy = ["multi-user.target"];
-        serviceConfig = {
-          ExecStart = let
-            corefile = pkgs.writeText "Corefile-real-proxy" ''
-              ${dnsOneCli}.real:53 {
-                bind 127.0.0.1 ::1
-                rewrite name exact ${dnsOneCli}.real ${dnsOneCli}
-                forward . ${ns}
-                cache 30
-              }
-
-              .:53 {
-                bind 127.0.0.1 ::1
-                hosts {
-                  ${vm} ${dnsAnthropic} ${dnsOneCli}
-                  fallthrough
-                }
-                forward . ${ns}
-                cache 30
-              }
-            '';
-          in "${pkgs.lib.getExe pkgs.coredns} -conf ${corefile}";
-          Restart = "always";
-          RestartSec = 2;
-        };
-      };
-      caddy = {
-        wants = ["coredns.service"];
-        after = ["coredns.service"];
-      };
-    };
-  };
-
-  services.caddy = {
-    enable = true;
-    virtualHosts = let
-      bind = ''
-        bind ${vm} 127.0.0.1 ::1
-        tls ${tlsCrt} ${tlsKey}
-      '';
-      llama.extraConfig = ''
-        ${bind}
-
-        @eventLoggingBatch {
-          method POST
-          path /api/event_logging/batch
-        }
-        handle @eventLoggingBatch {
-          respond "" 204
-        }
-
-        handle {
-          reverse_proxy http://${gw}:${llamaRemote} {
-            header_up Host localhost
-          }
-        }
-      '';
-    in {
-      ${dnsAnthropic} = llama;
-      ${dnsOneCli}.extraConfig = ''
-        ${bind}
-
-        @install path /cli/install
-        handle @install {
-          header Content-Type text/plain
-          root * /
-          rewrite * ${./onecli/install.sh}
-          file_server
-        }
-
-        handle {
-          # Resolved via the CoreDNS proxy to avoid an infinite recursion via this vhost.
-          reverse_proxy https://${dnsOneCli}.real {
-            header_up Host ${dnsOneCli}
-            transport http {
-              tls_server_name ${dnsOneCli}
-            }
-          }
-        }
-      '';
-    };
   };
 
   environment = {
     systemPackages = with pkgs; [
+      # The main attraction
+      openclaw
+
       # NPM + Node runtime
       # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus
       (lib.hiPrio nodejs_25)
       nodePackages.npm
-
-      # OpenClaw, Claude Code and friends
-      claude-code
-      openclaw
-      onecli
+      pnpm
+      deno
+      bun
 
       # Docker
       docker
@@ -344,6 +195,7 @@ in {
       # LLVM
       clang_22
       llvm_22
+      gcc
 
       # Python: bleeding edge + stable versions
       (lib.hiPrio python315)
@@ -354,6 +206,7 @@ in {
       cmake
       pkg-config
       zig
+      uv
 
       # The "Investigator" Kit
       strace
@@ -363,22 +216,26 @@ in {
       gdb
       lldb
     ];
-    variables = {
-      # API key is not required by the host, but the client wants one
-      ANTHROPIC_API_KEY = "sk-ant-local";
-    };
-    etc."agent.gitconfig".text = ''
+    etc."${gitConfig}".text = ''
       [user]
-        name = OpenClaw Agent
-        email = agent@${hostName}
+        name = DH8 Agent
+        email = ${agent}@${domain}
     '';
   };
-  programs.git = {
-    enable = true;
-    config = {
-      init.defaultBranch = "main";
-      pull.rebase = true;
-      push.autoSetupRemote = true;
+  programs = {
+    git = {
+      enable = true;
+      config = {
+        init.defaultBranch = "main";
+        pull.rebase = true;
+        push.autoSetupRemote = true;
+      };
+    };
+    neovim = {
+      enable = true;
+      defaultEditor = true;
+      viAlias = true;
+      vimAlias = true;
     };
   };
 

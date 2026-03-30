@@ -26,7 +26,6 @@ in {
   # Networking & Firewall
   networking = {
     inherit hostName;
-    nameservers = ["127.0.0.1" "::1"];
     firewall = {
       enable = true;
       allowedTCPPorts = [22 clawPort];

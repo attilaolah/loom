@@ -21,13 +21,9 @@
 
   # Directories & files
   home = "/home/${agent}";
-  workDir = "${home}/work";
-  ncDir = "${home}/nanoclaw";
   claudeDir = "${home}/.claude";
   claudeSettings = "${claudeDir}/settings.json";
   claudeState = "${home}/.claude.json";
-  gitDir = "/srv/git";
-  repoDir = "${gitDir}/work.git";
   gitConfig = "/etc/agent.gitconfig";
   tlsDir = "/etc/tls";
   tlsCrt = "${tlsDir}/tls.crt";
@@ -35,34 +31,6 @@
 
   dnsAnthropic = "api.anthropic.com";
   dnsOneCli = "www.onecli.sh";
-
-  setupNanoClaw = pkgs.writeShellApplication {
-    name = "setup-nanoclaw";
-    runtimeInputs = with pkgs; [git claude-code];
-    text = ''
-      set -euo pipefail
-
-      mkdir -p ${ncDir}
-      cd ${ncDir}
-
-      if [ ! -d .git ]; then
-        git clone https://github.com/qwibitai/nanoclaw.git .
-      fi
-
-      if git remote get-url origin >/dev/null 2>&1; then
-        if ! git remote get-url upstream >/dev/null 2>&1; then
-          git remote rename origin upstream
-        fi
-      fi
-
-      if ! git remote get-url origin >/dev/null 2>&1; then
-        # Add a fork, even though it may not exist, to satisfy the setup script.
-        git remote add origin https://github.com/${owner}/nanoclaw.git
-      fi
-
-      exec claude /setup
-    '';
-  };
 in {
   # Networking & Firewall
   networking = {
@@ -186,11 +154,6 @@ in {
   systemd = {
     tmpfiles.rules = [
       "L+ ${home}/.gitconfig - - - - ${gitConfig}"
-      "d ${gitDir} 0775 ${admin} ${group} -"
-      # 2xxx sets the setgid bit
-      "d ${repoDir} 2775 ${admin} ${group} -"
-      "d ${workDir} 2775 ${agent} ${group} -"
-      # Writable nanoclaw working tree copied from the store path
       "d ${claudeDir} 0755 ${agent} ${group} -"
     ];
 
@@ -223,27 +186,6 @@ in {
           if ! grep -Fqx "$path_line" "$bashrc"; then
             echo "$path_line" >> "$bashrc"
             chown ${agent}:${group} "$bashrc"
-          fi
-        '';
-        serviceConfig.Type = "oneshot";
-      };
-      init-work = {
-        description = "Git bridge between ${admin} and ${agent}";
-        after = ["network.target"];
-        wantedBy = ["multi-user.target"];
-        path = with pkgs; [coreutils git util-linux];
-        script = ''
-          # Initialize bare repo if it doesn't exist
-          if [ ! -d ${repoDir}/objects ]; then
-            git init --bare ${repoDir}
-            chown -R ${admin}:${group} ${repoDir}
-            chmod -R 2775 ${repoDir}
-          fi
-
-          # Initialize agent's workspace if empty
-          if [ ! -d ${workDir}/.git ]; then
-            runuser -u ${agent} -- git init ${workDir}
-            runuser -u ${agent} -- git -C ${workDir} remote add origin ${repoDir}
           fi
         '';
         serviceConfig.Type = "oneshot";
@@ -358,9 +300,9 @@ in {
       (lib.hiPrio nodejs_25)
       nodePackages.npm
 
-      # Claude Code and manual NanoClaw bootstrap helper
-      setupNanoClaw
+      # OpenClaw, Claude Code and friends
       claude-code
+      openclaw
       onecli
 
       # Docker
@@ -427,7 +369,7 @@ in {
     };
     etc."agent.gitconfig".text = ''
       [user]
-        name = NanoClaw Agent
+        name = OpenClaw Agent
         email = agent@${hostName}
     '';
   };
@@ -451,7 +393,12 @@ in {
     dev.enable = true;
   };
 
-  nixpkgs.config.allowUnfree = true;
+  nixpkgs.config = {
+    allowUnfree = true;
+    permittedInsecurePackages = [
+      "openclaw-2026.3.12"
+    ];
+  };
 
   system.stateVersion = "26.05";
 }

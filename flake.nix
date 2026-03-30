@@ -1,5 +1,5 @@
 {
-  description = "NixOS VM + NanoClaw";
+  description = "NixOS VM + OpenClaw";
 
   inputs = {
     nixpkgs.url = "nixpkgs";

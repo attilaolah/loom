@@ -311,6 +311,14 @@ in {
       llama.extraConfig = ''
         ${bind}
 
+        @eventLoggingBatch {
+          method POST
+          path /api/event_logging/batch
+        }
+        handle @eventLoggingBatch {
+          respond "" 204
+        }
+
         handle {
           reverse_proxy http://${gw}:${llamaRemote} {
             header_up Host localhost

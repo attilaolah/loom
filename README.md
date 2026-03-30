@@ -29,8 +29,8 @@ llama-server \
   --model unsloth/Qwen3-Coder-Next-GGUF/Qwen3-Coder-Next-UD-Q4_K_XL.gguf \
   --alias unsloth/Qwen3-Coder-Next \
   --n-gpu-layers 999 \
-  --override-kv .ffn_.*_exps.=CPU \
-  --ctx-size 131072 \
+  --override-tensor ".ffn_.*_exps.=CPU" \
+  --ctx-size 196608 \
   --seed 3407 \
   --temp 1.0 \
   --top-p 0.95 \
@@ -39,7 +39,7 @@ llama-server \
   --cache-type-k q8_0 \
   --cache-type-v q8_0 \
   --threads 10 \
-  --batch-size 2048 \
+  --batch-size 4096 \
   --ubatch-size 1024 \
   --host 0.0.0.0 \
   --port 12000

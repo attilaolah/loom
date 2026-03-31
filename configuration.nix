@@ -150,7 +150,6 @@ in {
       # NPM + Node runtime
       # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus
       (lib.hiPrio nodejs_25)
-      nodePackages.npm
       pnpm
       deno
       bun

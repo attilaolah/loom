@@ -58,8 +58,8 @@ in {
   virtualisation = {
     vmVariant = {
       virtualisation = {
-        cores = 8;
-        memorySize = 32 * 1024; # 32Gi
+        cores = 12;
+        memorySize = 96 * 1024; # 96Gi
         diskSize = 120 * 1000; # 120GB
         graphics = false;
         forwardPorts = let

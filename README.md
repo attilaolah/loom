@@ -24,10 +24,26 @@ Or clone the repo, tweak the Nix configs, build & run locally via `nix build` an
 In another terminal, start the `llama.cpp` server with the model of your choice. Bind it to port `12000` on the qemu
 host (or all hosts):
 
+### Gemma 4
+
 ```sh
 llama-server \
-  --model unsloth/Qwen3-Coder-Next-GGUF/Qwen3-Coder-Next-UD-Q4_K_XL.gguf \
-  --alias unsloth/Qwen3-Coder-Next \
+  --model ggml-org/gemma-4-26b-a4b-it-Q4_K_M.gguf \
+  --alias gemma-4-26b-a4b \
+  --ctx-size 65536 \
+  --temp 1.0 \
+  --top_p 0.95 \
+  --top_k 64 \
+  --host 0.0.0.0 \
+  --port 12000
+```
+
+### Qwen3 Coder Next
+
+```sh
+llama-server \
+  --model unsloth/qwen3-coder-next-UD-Q4_K_XL.gguf \
+  --alias qwen3-coder-next \
   --n-gpu-layers 999 \
   --override-tensor ".ffn_.*_exps.=CPU" \
   --ctx-size 196608 \

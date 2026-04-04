@@ -12,14 +12,39 @@
     ...
   }: let
     mkPkgs = system:
-      import nixpkgs {
+      import nixpkgs (let
+        openclaw = {
+          version = "2026.4.2";
+          hash = "sha256-wVS2OuBNrF1yWjmINxde0kC5mvY2QUUtwYpYrZcARkI=";
+          pnpmDepsHash = "sha256-aHepSWiQ4+UyjPHBF+4+M9/nFrgfCw422q671saJM+U=";
+        };
+      in {
         inherit system;
-        config.allowUnfree = true;
-      };
+        config = {
+          allowUnfree = true;
+          permittedInsecurePackages = [
+            "openclaw-${openclaw.version}"
+          ];
+        };
+        overlays = [
+          (final: prev: {
+            openclaw = prev.openclaw.overrideAttrs (_: {
+              inherit (openclaw) version pnpmDepsHash;
+              src = prev.fetchFromGitHub {
+                inherit (openclaw) hash;
+                owner = "openclaw";
+                repo = "openclaw";
+                tag = "v${openclaw.version}";
+              };
+            });
+          })
+        ];
+      });
 
     mkNixosConfig = system:
       nixpkgs.lib.nixosSystem {
         inherit system;
+        pkgs = mkPkgs system;
         modules = [./configuration.nix];
       };
   in

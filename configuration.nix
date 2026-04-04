@@ -248,12 +248,5 @@ in {
     dev.enable = true;
   };
 
-  nixpkgs.config = {
-    allowUnfree = true;
-    permittedInsecurePackages = [
-      "openclaw-2026.3.12"
-    ];
-  };
-
   system.stateVersion = "26.05";
 }

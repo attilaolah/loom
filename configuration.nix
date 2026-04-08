@@ -1,4 +1,5 @@
 {
+  config,
   pkgs,
   lib,
   ...
@@ -10,6 +11,9 @@
   owner = "attilaolah";
   domain = "dorn.haus";
 
+  # OpenClaw
+  version = "2026.4.8";
+
   # Networking
   llamaRemote = "12000";
   host = n: "10.0.2.${toString n}";
@@ -17,7 +21,6 @@
   ns = host 3;
   vm = host 15;
   hostName = "vm";
-  clawPort = 18789;
 
   # Directories & files
   home = "/home/${agent}";
@@ -28,7 +31,7 @@ in {
     inherit hostName;
     firewall = {
       enable = true;
-      allowedTCPPorts = [22 clawPort];
+      allowedTCPPorts = [22];
 
       # Restrict outgoing traffic
       extraCommands = ''
@@ -72,11 +75,6 @@ in {
             from = "host";
             host = h 2222;
             guest.port = 22;
-          }
-          {
-            from = "host";
-            host = h clawPort;
-            guest.port = clawPort;
           }
         ];
       };
@@ -126,13 +124,41 @@ in {
     ];
   };
 
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = false;
-      KbdInteractiveAuthentication = false;
-      PermitRootLogin = "no";
-      AllowUsers = admins ++ [agent];
+  services = {
+    openclaw = {
+      enable = true;
+      package = pkgs.openclaw.overrideAttrs (finalAttrs: {
+        inherit version;
+        src = pkgs.fetchFromGitHub {
+          owner = "openclaw";
+          repo = "openclaw";
+          tag = "v${version}";
+          hash = "sha256-Y9FvI6Vhyi+kBLVio7/Qz77NWBViYMD0KheV7cXyeXs=";
+        };
+        pnpmDepsHash = lib.fakeHash;
+      });
+
+      telegram.enable = true;
+      toolAllowlist = [
+        "read"
+        "write"
+        "edit"
+        "web_search"
+        "web_fetch"
+        "message"
+        "tts"
+        "exec" # important - for full shell access
+        "browser" # let it surf
+      ];
+    };
+    openssh = {
+      enable = true;
+      settings = {
+        PasswordAuthentication = false;
+        KbdInteractiveAuthentication = false;
+        PermitRootLogin = "no";
+        AllowUsers = admins ++ [agent];
+      };
     };
   };
 
@@ -145,7 +171,7 @@ in {
   environment = {
     systemPackages = with pkgs; [
       # The main attraction
-      openclaw
+      config.services.openclaw.package
 
       # NPM + Node runtime
       # Force Node 25 with high priority to shadow Node 24 which gets pulled in via dbus
@@ -200,6 +226,7 @@ in {
       python314
 
       # Common tools for coding tasks
+      bazel_9
       go
       cmake
       pkg-config
@@ -240,6 +267,12 @@ in {
   nix = {
     nixPath = ["nixpkgs=${pkgs.path}"];
     settings.experimental-features = ["nix-command" "flakes"];
+  };
+  nixpkgs.config = {
+    allowUnfree = true;
+    permittedInsecurePackages = [
+      "openclaw-${version}"
+    ];
   };
 
   documentation = {

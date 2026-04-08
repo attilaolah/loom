@@ -4,48 +4,22 @@
   inputs = {
     nixpkgs.url = "nixpkgs";
     flake-parts.url = "github:hercules-ci/flake-parts";
+    openclaw.url = "github:Scout-DJ/openclaw-nix";
   };
 
   outputs = inputs @ {
     flake-parts,
     nixpkgs,
+    openclaw,
     ...
   }: let
-    mkPkgs = system:
-      import nixpkgs (let
-        openclaw = {
-          version = "2026.4.2";
-          hash = "sha256-wVS2OuBNrF1yWjmINxde0kC5mvY2QUUtwYpYrZcARkI=";
-          pnpmDepsHash = "sha256-aHepSWiQ4+UyjPHBF+4+M9/nFrgfCw422q671saJM+U=";
-        };
-      in {
-        inherit system;
-        config = {
-          allowUnfree = true;
-          permittedInsecurePackages = [
-            "openclaw-${openclaw.version}"
-          ];
-        };
-        overlays = [
-          (final: prev: {
-            openclaw = prev.openclaw.overrideAttrs (_: {
-              inherit (openclaw) version pnpmDepsHash;
-              src = prev.fetchFromGitHub {
-                inherit (openclaw) hash;
-                owner = "openclaw";
-                repo = "openclaw";
-                tag = "v${openclaw.version}";
-              };
-            });
-          })
-        ];
-      });
-
     mkNixosConfig = system:
       nixpkgs.lib.nixosSystem {
         inherit system;
-        pkgs = mkPkgs system;
-        modules = [./configuration.nix];
+        modules = [
+          openclaw.nixosModules.default
+          ./configuration.nix
+        ];
       };
   in
     flake-parts.lib.mkFlake {inherit inputs;} {
@@ -60,7 +34,7 @@
         system,
         ...
       }: let
-        pkgs = mkPkgs system;
+        pkgs = import nixpkgs {inherit system;};
         nixosConfig = mkNixosConfig system;
         vm = nixosConfig.config.system.build.vm;
         vmRunner = lib.getExe' vm "run-${nixosConfig.config.networking.hostName}-vm";

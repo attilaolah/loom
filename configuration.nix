@@ -135,7 +135,7 @@ in {
           tag = "v${version}";
           hash = "sha256-Y9FvI6Vhyi+kBLVio7/Qz77NWBViYMD0KheV7cXyeXs=";
         };
-        pnpmDepsHash = lib.fakeHash;
+        pnpmDepsHash = "sha256-GrGh7rACPl+eROOOBYzneWJxl+xsh39/m2+dNI01oaQ=";
       });
 
       telegram.enable = true;

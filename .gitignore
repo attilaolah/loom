@@ -2,4 +2,5 @@
 /tls/*.key
 /*.qcow2
 /.cache
+.codex
 .env

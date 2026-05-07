@@ -15,7 +15,7 @@
   version = "2026.5.6";
 
   # Networking
-  llamaRemote = "12000";
+  llamaRemote = "1200";
   host = n: "10.0.2.${toString n}";
   gw = host 2;
   ns = host 3;

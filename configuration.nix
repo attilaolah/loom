@@ -127,7 +127,61 @@ in {
   services = {
     openclaw = {
       enable = true;
-      package = pkgs.openclaw.overrideAttrs (finalAttrs: {
+      package = pkgs.openclaw.overrideAttrs (_finalAttrs: previousAttrs: let
+        obsoletePatchName = "skip-bundled-runtime-install.patch";
+        isObsoletePatch = patch: builtins.baseNameOf (toString patch) == obsoletePatchName;
+        previousPatches = previousAttrs.patches or [];
+        previousBuildPhase = previousAttrs.buildPhase;
+        previousInstallPhase = previousAttrs.installPhase;
+        obsoleteBuildSnippet = ''
+          # In Nix sandbox, npm install has no network access.
+          # 1) Skip missing/mismatched deps in closure walk instead of aborting.
+          # 2) Never fall through to the npm-install path.
+          substituteInPlace scripts/stage-bundled-plugin-runtime-deps.mjs \
+            --replace-fail \
+              'if (installedVersion === null || !dependencyVersionSatisfied(spec, installedVersion)) {
+                return null;
+              }' \
+              'if (installedVersion === null || !dependencyVersionSatisfied(spec, installedVersion)) {
+                continue;
+              }' \
+            --replace-fail \
+              '    if (
+                stageInstalledRootRuntimeDeps({
+                  directDependencyPackageRoot,
+                  fingerprint,
+                  packageJson,
+                  pluginDir,
+                  pruneConfig,
+                  repoRoot,
+                  stampPath,
+                })
+              ) {
+                continue;
+              }' \
+              '    if (
+                stageInstalledRootRuntimeDeps({
+                  directDependencyPackageRoot,
+                  fingerprint,
+                  packageJson,
+                  pluginDir,
+                  pruneConfig,
+                  repoRoot,
+                  stampPath,
+                })
+              ) {
+                continue;
+              }
+              continue; // nix: sandbox has no npm'
+        '';
+        obsoleteInstallSnippet = "cp --reflink=auto -r assets docs skills patches extensions qa $libdir/\n";
+        replacementInstallSnippet = lib.concatStringsSep "\n" [
+          "    for path in assets docs skills patches extensions qa; do"
+          "      [ ! -e \"$path\" ] || cp --reflink=auto -r \"$path\" $libdir/"
+          "    done"
+          ""
+        ];
+      in {
         inherit version;
         src = pkgs.fetchFromGitHub {
           owner = "openclaw";
@@ -136,6 +190,15 @@ in {
           hash = "sha256-svziVePavoMxEUQAaNkv+67tSUOywblefmeTWtmKo9Y=";
         };
         pnpmDepsHash = "sha256-kz9vE1A/GTkw/HH2ts4hxTJzrdkYhiLaJQP0AeAS3Bo=";
+        patches = assert lib.assertMsg (lib.any isObsoletePatch previousPatches)
+        "nixpkgs openclaw no longer has ${obsoletePatchName}";
+          builtins.filter (patch: ! isObsoletePatch patch) previousPatches;
+        buildPhase = assert lib.assertMsg (lib.hasInfix obsoleteBuildSnippet previousBuildPhase)
+        "nixpkgs openclaw buildPhase no longer has the obsolete bundled runtime deps substitution";
+          builtins.replaceStrings [obsoleteBuildSnippet] [""] previousBuildPhase;
+        installPhase = assert lib.assertMsg (lib.hasInfix obsoleteInstallSnippet previousInstallPhase)
+        "nixpkgs openclaw installPhase no longer copies assets unconditionally";
+          builtins.replaceStrings [obsoleteInstallSnippet] [replacementInstallSnippet] previousInstallPhase;
       });
 
       telegram.enable = true;

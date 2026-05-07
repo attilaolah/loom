@@ -12,7 +12,7 @@
   domain = "dorn.haus";
 
   # OpenClaw
-  version = "2026.4.8";
+  version = "2026.5.6";
 
   # Networking
   llamaRemote = "12000";
@@ -133,9 +133,9 @@ in {
           owner = "openclaw";
           repo = "openclaw";
           tag = "v${version}";
-          hash = "sha256-Y9FvI6Vhyi+kBLVio7/Qz77NWBViYMD0KheV7cXyeXs=";
+          hash = "sha256-svziVePavoMxEUQAaNkv+67tSUOywblefmeTWtmKo9Y=";
         };
-        pnpmDepsHash = "sha256-GrGh7rACPl+eROOOBYzneWJxl+xsh39/m2+dNI01oaQ=";
+        pnpmDepsHash = "sha256-kz9vE1A/GTkw/HH2ts4hxTJzrdkYhiLaJQP0AeAS3Bo=";
       });
 
       telegram.enable = true;

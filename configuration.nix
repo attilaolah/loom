@@ -88,7 +88,7 @@ in {
       openssh.authorizedKeys.keyFiles = [
         (pkgs.fetchurl {
           url = "https://github.com/${owner}.keys";
-          sha256 = "sha256-Y63CD0ZqmOhnFhRXwsp2Xb5aaoIWr7nUwHAvov38buc=";
+          sha256 = "sha256-Nw/XiCnJ+KmHK1YFO3x9MF+GPfCWWyPmy//go4UKg/M=";
         })
       ];
     in {
